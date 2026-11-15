@@ -1,0 +1,675 @@
+# Anomalies — textes rédigés pour ADSentry.
+
+# ----------------------------------------------------------------------------- comptes / Kerberos
+- id: A-ASREP-ROASTABLE
+  category: anomalies
+  check: anom_asrep_roastable
+  severity: high
+  points: 30
+  title: "Comptes sans pré-authentification Kerberos (AS-REP Roasting)"
+  description: "Un attaquant non authentifié peut obtenir une réponse chiffrée avec le mot de passe du compte."
+  remediation: "Réactiver la pré-authentification (décocher DONT_REQ_PREAUTH)."
+  detection: "Événement 4768 avec type de pré-authentification 0."
+  mitre: [{technique: T1558.004}]
+
+- id: A-KERBEROASTABLE
+  category: anomalies
+  check: anom_kerberoastable_users
+  severity: medium
+  points: 15
+  title: "Comptes de service avec SPN (Kerberoasting)"
+  description: "Comptes exposés au Kerberoasting ; risque proportionnel à la faiblesse du mot de passe."
+  remediation: "Migrer vers des gMSA ; sinon mots de passe longs et aléatoires, AES uniquement."
+  detection: "Événement 4769 : rafale de demandes de tickets RC4 par un même compte."
+  mitre: [{technique: T1558.003}]
+
+- id: A-REVERSIBLE-ENCRYPTION
+  category: anomalies
+  check: anom_reversible_encryption
+  severity: high
+  points: 20
+  title: "Mots de passe stockés avec chiffrement réversible"
+  description: "Le mot de passe en clair est récupérable par quiconque accède à la base NTDS."
+  remediation: "Décocher l'option et forcer un changement de mot de passe."
+  mitre: [{technique: T1003.003}]
+
+- id: A-DES-ENABLED
+  category: anomalies
+  check: anom_des_enabled
+  severity: medium
+  points: 10
+  title: "Comptes autorisant le chiffrement DES"
+  description: "DES est cassable rapidement ; les tickets de ces comptes sont exposés."
+  remediation: "Décocher USE_DES_KEY_ONLY, retirer DES de msDS-SupportedEncryptionTypes, imposer AES."
+  mitre: [{technique: T1558, relation: related}]
+
+- id: A-ADMINSDHOLDER-ORPHANS
+  category: anomalies
+  check: anom_adminsdholder_orphans
+  severity: low
+  points: 5
+  title: "Anciens administrateurs encore marqués adminCount=1"
+  description: "Ces comptes ne sont plus admins mais gardent une ACL figée : signe d'anciens droits ou de manipulation."
+  remediation: "Remettre adminCount à 0 et réactiver l'héritage des permissions."
+  mitre: [{technique: T1078.002, relation: related}]
+
+- id: A-GUEST-ENABLED
+  category: anomalies
+  check: anom_guest_enabled
+  severity: high
+  points: 20
+  title: "Compte Invité activé"
+  description: "Le compte Guest permet un accès sans mot de passe connu."
+  remediation: "Désactiver le compte Guest."
+  mitre: [{technique: T1078.001}]
+
+- id: A-UNIX-PASSWORD
+  category: anomalies
+  check: anom_unix_password
+  severity: medium
+  points: 15
+  title: "Attributs userPassword / unixUserPassword renseignés"
+  description: "Ces attributs contiennent souvent un mot de passe lisible par des utilisateurs authentifiés."
+  remediation: "Vider ces attributs et changer les mots de passe concernés."
+  mitre: [{technique: T1552}]
+
+- id: A-SMARTCARD-OLD-PWD
+  category: anomalies
+  check: anom_smartcard_old_pwd
+  params: {days: 365}
+  severity: medium
+  points: 10
+  title: "Comptes « carte à puce obligatoire » au hash inchangé depuis 1 an"
+  description: "Le hash NT associé ne change jamais : volé une fois, il reste utilisable (pass-the-hash)."
+  remediation: "Activer la rotation automatique (domaine 2016+) ou décocher/recocher l'option régulièrement."
+  mitre: [{technique: T1550.002}]
+
+- id: A-SMARTCARD-PWD-ROTATION
+  category: anomalies
+  check: anom_smartcard_rotation
+  severity: low
+  points: 5
+  title: "Rotation automatique des secrets des comptes carte à puce désactivée"
+  description: "msDS-ExpirePasswordsOnSmartCardOnlyAccounts n'est pas activé."
+  remediation: "Activer l'option au niveau du domaine (niveau fonctionnel 2016)."
+  mitre: [{technique: T1550.002, relation: related}]
+
+- id: A-SPN-UNICODE
+  category: anomalies
+  check: anom_spn_unicode
+  severity: high
+  points: 20
+  title: "SPN contenant des caractères invisibles ou non ASCII"
+  description: "Technique d'usurpation de service (collision visuelle de SPN)."
+  remediation: "Supprimer le SPN suspect et enquêter."
+  mitre: [{technique: T1036}]
+
+- id: A-UPN-SAM-COLLISION
+  category: anomalies
+  check: anom_upn_sam_collision
+  severity: high
+  points: 20
+  title: "UPN identique au nom de connexion d'un autre compte"
+  description: "Ambiguïté exploitable pour usurper l'identité du compte visé (Kerberos, certificats)."
+  remediation: "Corriger l'UPN et rechercher l'origine de la modification."
+  mitre: [{technique: T1036}, {technique: T1649, relation: related}]
+
+- id: A-DNS-HOSTNAME-MISMATCH
+  category: anomalies
+  check: anom_dns_hostname_mismatch
+  severity: medium
+  points: 10
+  title: "dNSHostName différent du nom du compte ordinateur"
+  description: "Préalable à certaines usurpations (certificats machines, Certifried)."
+  remediation: "Corriger dNSHostName et restreindre son écriture par le créateur."
+  mitre: [{technique: T1036}, {technique: T1649, relation: related}]
+
+- id: A-LAPS-JOINED-COMPUTERS
+  category: anomalies
+  check: anom_laps_joined_computers
+  severity: medium
+  points: 10
+  title: "Machines jointes par des utilisateurs pouvant lire leur mot de passe LAPS"
+  description: "Le créateur (ms-DS-CreatorSID) d'une machine peut en lire le mot de passe administrateur local."
+  remediation: "Changer le propriétaire des objets et réinitialiser le mot de passe LAPS."
+  mitre: [{technique: T1552}]
+
+# ----------------------------------------------------------------------------- domaine
+- id: A-MACHINE-ACCOUNT-QUOTA
+  category: anomalies
+  check: anom_machine_account_quota
+  severity: medium
+  points: 10
+  title: "Les utilisateurs peuvent créer des comptes ordinateurs"
+  description: "ms-DS-MachineAccountQuota > 0 : brique fréquente des attaques RBCD et de relais."
+  remediation: "Fixer ms-DS-MachineAccountQuota à 0 et déléguer la jonction à un groupe dédié."
+  mitre: [{technique: T1136.002}]
+
+- id: A-PROTECTED-USERS-MISSING
+  category: anomalies
+  check: anom_protected_users_missing
+  severity: medium
+  points: 10
+  title: "Groupe Protected Users absent"
+  description: "Le groupe apparaît avec un PDC 2012 R2+ ; son absence prive le domaine de cette protection."
+  remediation: "Transférer le rôle PDC sur un DC récent."
+  mitre: [{technique: T1003, relation: related}]
+
+- id: A-NOT-ENOUGH-DC
+  category: anomalies
+  check: anom_not_enough_dc
+  params: {min: 2}
+  severity: low
+  points: 5
+  title: "Moins de deux contrôleurs de domaine inscriptibles"
+  description: "Pas de redondance : la perte du DC rend le domaine indisponible."
+  remediation: "Déployer au moins deux DC."
+  mitre: []
+
+- id: A-NTFRS-SYSVOL
+  category: anomalies
+  check: anom_ntfrs_sysvol
+  severity: medium
+  points: 10
+  title: "SYSVOL répliqué avec FRS (obsolète)"
+  description: "FRS n'est plus supporté et bloque l'ajout de DC récents."
+  remediation: "Migrer la réplication SYSVOL vers DFSR (dfsrmig)."
+  mitre: []
+
+- id: A-BACKUP
+  category: anomalies
+  check: anom_backup
+  params: {days: 7}
+  severity: medium
+  points: 15
+  title: "Aucune sauvegarde AD récente"
+  description: "Sans sauvegarde récente, la reconstruction après un rançongiciel est compromise."
+  remediation: "Sauvegarder l'état système d'au moins deux DC chaque jour, hors ligne et testée."
+  mitre: [{technique: T1490}]
+
+- id: A-MIN-PWD-LEN
+  category: anomalies
+  check: anom_min_pwd_len
+  params: {min: 8}
+  severity: medium
+  points: 10
+  title: "Longueur minimale de mot de passe trop faible"
+  description: "La politique par défaut autorise des mots de passe de moins de 8 caractères (12 à 14 recommandés)."
+  remediation: "Relever la longueur minimale (14 recommandé) et utiliser des PSO pour les comptes sensibles."
+  mitre: [{technique: T1110}]
+
+- id: A-NO-SERVICE-POLICY
+  category: anomalies
+  check: anom_no_service_policy
+  params: {min: 20}
+  severity: info
+  points: 0
+  title: "Pas de politique de mot de passe dédiée aux comptes de service"
+  description: "Aucune PSO n'impose de mots de passe longs aux comptes de service."
+  remediation: "Créer une PSO (20+ caractères) appliquée aux comptes de service, ou migrer vers des gMSA."
+  mitre: [{technique: T1558.003, relation: related}]
+
+- id: A-PRE2K-ANONYMOUS
+  category: anomalies
+  check: anom_pre2k
+  params: {mode: anonymous}
+  severity: medium
+  points: 15
+  title: "Accès anonyme via « Accès compatible pré-Windows 2000 »"
+  description: "Anonymous ou Everyone dans ce groupe permet l'énumération anonyme de l'annuaire."
+  remediation: "Retirer Anonymous Logon et Everyone du groupe."
+  mitre: [{technique: T1087.002}]
+
+- id: A-PRE2K-AUTHENTICATED-USERS
+  category: anomalies
+  check: anom_pre2k
+  params: {mode: authenticated_users}
+  severity: low
+  points: 5
+  title: "Authenticated Users dans « Accès compatible pré-Windows 2000 »"
+  description: "Donne à tout utilisateur des droits de lecture étendus hérités de NT4."
+  remediation: "Retirer Authenticated Users après vérification des applications anciennes."
+  mitre: [{technique: T1087.002}]
+
+- id: A-PRE2K-OTHER
+  category: anomalies
+  check: anom_pre2k
+  params: {mode: other}
+  severity: low
+  points: 5
+  title: "Membres inhabituels dans « Accès compatible pré-Windows 2000 »"
+  description: "Le groupe a été modifié par rapport à sa composition par défaut."
+  remediation: "Vérifier et retirer les membres non nécessaires."
+  mitre: [{technique: T1087.002, relation: related}]
+
+# ----------------------------------------------------------------------------- dSHeuristics
+- id: A-DSHEURISTICS-ANONYMOUS
+  category: anomalies
+  check: anom_dsheuristics
+  params: {position: 7, bad_values: ["2"]}
+  severity: high
+  points: 20
+  title: "Opérations LDAP anonymes autorisées (dSHeuristics)"
+  description: "fLDAPBlockAnonOps=2 autorise un accès anonyme à l'annuaire au niveau de la forêt."
+  remediation: "Remettre le 7e caractère de dSHeuristics à 0."
+  mitre: [{technique: T1087.002}]
+
+- id: A-DSHEURISTICS-ANON-NSPI
+  category: anomalies
+  check: anom_dsheuristics
+  params: {position: 8, bad_values: ["1", "2"]}
+  severity: medium
+  points: 15
+  title: "Accès NSPI anonyme autorisé (dSHeuristics)"
+  description: "Le carnet d'adresses peut être interrogé sans authentification."
+  remediation: "Remettre le 8e caractère de dSHeuristics à 0."
+  mitre: [{technique: T1087.002}]
+
+- id: A-DSHEURISTICS-NO-UNIQUENESS
+  category: anomalies
+  check: anom_dsheuristics
+  params: {position: 21, bad_values: ["1", "2", "3"]}
+  severity: high
+  points: 20
+  title: "Vérification d'unicité des UPN/SPN désactivée"
+  description: "Permet des doublons de SPN/UPN exploitables pour usurper un service ou un compte."
+  remediation: "Remettre le 21e caractère de dSHeuristics à 0."
+  mitre: [{technique: T1036}]
+
+- id: A-DSHEURISTICS-LDAP-SECURITY
+  category: anomalies
+  check: anom_dsheuristics
+  params: {position: 28, bad_values: ["2"]}
+  severity: high
+  points: 20
+  title: "Protection CVE-2021-42291 désactivée (dSHeuristics)"
+  description: "La vérification renforcée des ajouts LDAP (création d'ordinateurs) est désactivée."
+  remediation: "Retirer la valeur 2 du 28e caractère (mode application de KB5008383)."
+  mitre: [{technique: T1068}]
+
+# ----------------------------------------------------------------------------- GPO
+- id: A-GPP-PASSWORD
+  category: anomalies
+  check: anom_gpo_password_files
+  severity: critical
+  points: 50
+  source: gpo
+  title: "Mots de passe dans les préférences de stratégie de groupe (cpassword)"
+  description: "La clé de chiffrement des GPP est publique : tout utilisateur peut lire ces mots de passe dans SYSVOL."
+  remediation: "Supprimer les fichiers XML concernés, changer les mots de passe exposés, utiliser LAPS."
+  mitre: [{technique: T1552.006}]
+
+- id: A-NTLMV1
+  category: anomalies
+  check: anom_gpo_ntlmv1
+  params: {min: 5}
+  severity: high
+  points: 30
+  source: gpo
+  title: "NTLMv1 / LM non bannis sur les DC"
+  description: "Les réponses NTLMv1 peuvent être converties en hash NT, permettant usurpation et relais."
+  remediation: "GPO DC : LmCompatibilityLevel = 5 (envoyer uniquement NTLMv2, refuser LM et NTLM)."
+  mitre: [{technique: T1557}, {technique: T1110.002, relation: related}]
+
+- id: A-LM-HASH
+  category: anomalies
+  check: anom_gpo_registry_bad
+  params: {key: 'machine\system\currentcontrolset\control\lsa\nolmhash', bad: [0]}
+  severity: high
+  points: 20
+  source: gpo
+  title: "Stockage des hashs LM autorisé par GPO"
+  description: "Le hash LM est trivial à casser."
+  remediation: "« Ne pas stocker de valeur de hachage LAN Manager » = Activé."
+  mitre: [{technique: T1003}]
+
+- id: A-REVERSIBLE-GPO
+  category: anomalies
+  check: anom_gpo_reversible
+  severity: high
+  points: 20
+  source: gpo
+  title: "GPO activant le chiffrement réversible des mots de passe"
+  description: "Tous les comptes concernés voient leur mot de passe stocké de manière récupérable."
+  remediation: "Désactiver « Stocker les mots de passe en utilisant un chiffrement réversible »."
+  mitre: [{technique: T1003}]
+
+- id: A-PWD-GPO-WEAK
+  category: anomalies
+  check: anom_gpo_weak_pwd_policy
+  params: {min: 8}
+  severity: low
+  points: 5
+  source: gpo
+  title: "Politique de mot de passe faible définie hors de la racine du domaine"
+  description: "Elle ne s'applique qu'aux comptes locaux des machines ciblées, souvent à tort."
+  remediation: "Utiliser des PSO pour les comptes du domaine et une politique locale robuste."
+  mitre: [{technique: T1110, relation: related}]
+
+- id: A-LIMIT-BLANK-PASSWORD
+  category: anomalies
+  check: anom_gpo_registry_bad
+  params: {key: 'machine\system\currentcontrolset\control\lsa\limitblankpassworduse', bad: [0]}
+  severity: medium
+  points: 15
+  source: gpo
+  title: "Comptes sans mot de passe utilisables à distance"
+  description: "Un compte local au mot de passe vide devient accessible par le réseau."
+  remediation: "« Limiter l'utilisation de mots de passe vides à l'ouverture de session console » = Activé."
+  mitre: [{technique: T1078.003}]
+
+- id: A-ANONYMOUS-GPO
+  category: anomalies
+  check: anom_gpo_anonymous
+  severity: high
+  points: 20
+  source: gpo
+  title: "GPO autorisant des accès anonymes"
+  description: "RestrictAnonymous désactivé, traduction SID/nom anonyme ou Everyone incluant Anonymous."
+  remediation: "Rétablir les valeurs par défaut sécurisées des options d'accès réseau."
+  mitre: [{technique: T1087.002}]
+
+- id: A-MEMBERSHIP-EVERYONE
+  category: anomalies
+  check: anom_gpo_membership_everyone
+  severity: critical
+  points: 40
+  source: gpo
+  title: "GPO ajoutant tout le monde à un groupe local"
+  description: "Un groupe large ajouté aux administrateurs locaux (ou équivalent) sur de nombreuses machines."
+  remediation: "Remplacer par un groupe dédié et restreint."
+  mitre: [{technique: T1098}, {technique: T1078.002, relation: related}]
+
+- id: A-AUDIT-DC
+  category: anomalies
+  check: anom_gpo_audit_dc
+  params:
+    subcategories:
+      - Audit Credential Validation
+      - Audit Kerberos Authentication Service
+      - Audit Kerberos Service Ticket Operations
+      - Audit Computer Account Management
+      - Audit Security Group Management
+      - Audit User Account Management
+      - Audit Directory Service Access
+      - Audit Directory Service Changes
+      - Audit Logon
+      - Audit Special Logon
+  severity: medium
+  points: 10
+  source: gpo
+  title: "Stratégie d'audit des DC incomplète"
+  description: "Sans ces journaux, les attaques Kerberos, DCSync ou modifications de groupes passent inaperçues."
+  remediation: "Configurer la stratégie d'audit avancée des DC (succès et échecs) et centraliser les journaux."
+  mitre: [{technique: T1685.001}]
+
+- id: A-AUDIT-POWERSHELL
+  category: anomalies
+  check: anom_gpo_registry_missing
+  params:
+    key: 'machine\software\policies\microsoft\windows\powershell\scriptblocklogging\enablescriptblocklogging'
+    good: [1]
+    label: "Journalisation des blocs de script PowerShell non activée"
+  severity: low
+  points: 5
+  source: gpo
+  title: "Journalisation PowerShell non activée"
+  description: "Les scripts malveillants exécutés en mémoire ne laissent pas de trace."
+  remediation: "Activer la journalisation des blocs de script (événement 4104) et des modules."
+  mitre: [{technique: T1059.001}]
+
+- id: A-HARDENED-PATHS
+  category: anomalies
+  check: anom_gpo_hardened_paths
+  severity: high
+  points: 20
+  source: gpo
+  title: "Protection des chemins SYSVOL/NETLOGON affaiblie (Hardened UNC Paths)"
+  description: "Sans authentification mutuelle et intégrité, les GPO peuvent être falsifiées par interception."
+  remediation: "Hardened Paths : RequireMutualAuthentication=1, RequireIntegrity=1 pour \\\\*\\SYSVOL et \\\\*\\NETLOGON."
+  mitre: [{technique: T1557}]
+
+- id: A-NO-GPO-LLMNR
+  category: anomalies
+  check: anom_gpo_registry_missing
+  params:
+    key: 'machine\software\policies\microsoft\windows nt\dnsclient\enablemulticast'
+    good: [0]
+    scope: domain
+    label: "LLMNR non désactivé par GPO"
+  severity: medium
+  points: 10
+  source: gpo
+  title: "LLMNR non désactivé"
+  description: "LLMNR permet d'usurper des noms sur le réseau local et de capturer des authentifications."
+  remediation: "GPO : « Désactiver la résolution de noms multidiffusion » = Activé (et désactiver NetBIOS-NS)."
+  mitre: [{technique: T1557.001}]
+
+- id: A-DC-REFUSE-PWD-CHANGE
+  category: anomalies
+  check: anom_gpo_registry_bad
+  params: {key: 'machine\system\currentcontrolset\services\netlogon\parameters\refusepasswordchange', bad: [1], scope: dcs}
+  severity: medium
+  points: 10
+  source: gpo
+  title: "Les DC refusent le changement de mot de passe des machines"
+  description: "Les mots de passe machines ne changent plus : comptes machines exploitables durablement."
+  remediation: "Désactiver « Contrôleur de domaine : refuser les modifications de mot de passe du compte ordinateur »."
+  mitre: [{technique: T1558.002, relation: related}]
+
+- id: A-LDAP-SIGNING-GPO
+  category: anomalies
+  check: anom_gpo_registry_bad
+  params: {key: 'machine\system\currentcontrolset\services\ntds\parameters\ldapserverintegrity', bad: [0], scope: dcs}
+  severity: high
+  points: 20
+  source: gpo
+  title: "Signature LDAP désactivée par GPO sur les DC"
+  description: "La GPO positionne explicitement la signature LDAP à « Aucune »."
+  remediation: "« Contrôleur de domaine : conditions requises pour la signature de serveur LDAP » = Exiger la signature."
+  mitre: [{technique: T1557}]
+
+# ----------------------------------------------------------------------------- DNS
+- id: A-DNS-ZONE-UPDATE-CRITICAL
+  category: anomalies
+  check: anom_dns_zone
+  params: {what: update_critical}
+  severity: high
+  points: 30
+  source: dns
+  title: "Mises à jour DNS non sécurisées sur les zones critiques"
+  description: "N'importe qui peut modifier les enregistrements du domaine ou de _msdcs (détournement de trafic)."
+  remediation: "Passer les zones en « Sécurisé uniquement »."
+  mitre: [{technique: T1557}]
+
+- id: A-DNS-ZONE-UPDATE-OTHER
+  category: anomalies
+  check: anom_dns_zone
+  params: {what: update_other}
+  severity: medium
+  points: 10
+  source: dns
+  title: "Mises à jour DNS non sécurisées sur d'autres zones"
+  description: "Des enregistrements peuvent être créés ou modifiés sans authentification."
+  remediation: "Passer les zones en « Sécurisé uniquement »."
+  mitre: [{technique: T1557, relation: related}]
+
+- id: A-DNS-ZONE-TRANSFER
+  category: anomalies
+  check: anom_dns_zone
+  params: {what: transfer}
+  severity: low
+  points: 5
+  source: dns
+  title: "Transferts de zone DNS autorisés"
+  description: "Permet de récupérer en une requête la cartographie complète des noms internes."
+  remediation: "Désactiver les transferts ou les limiter à des serveurs nommés."
+  mitre: [{technique: T1590.002}]
+
+- id: A-DNS-ZONE-AU-CREATE-CHILD
+  category: anomalies
+  check: anom_dns_zone
+  params: {what: au_create_child}
+  severity: medium
+  points: 10
+  source: dns
+  title: "Tout utilisateur peut créer des enregistrements DNS (ADIDNS)"
+  description: "Permet de créer des enregistrements génériques (wildcard, WPAD) pour intercepter des authentifications."
+  remediation: "Retirer « Créer tous les objets enfants » à Authenticated Users sur les zones intégrées AD."
+  mitre: [{technique: T1557}]
+
+# ----------------------------------------------------------------------------- sondes réseau
+- id: A-SPOOLER-DC
+  category: anomalies
+  check: anom_probe
+  params: {field: spooler}
+  severity: high
+  points: 20
+  source: probe
+  title: "Service Spouleur d'impression actif sur des DC"
+  description: "Permet de forcer un DC à s'authentifier vers une machine contrôlée par l'attaquant."
+  remediation: "Désactiver le service Spooler sur tous les DC."
+  mitre: [{technique: T1187}]
+
+- id: A-WEBCLIENT-DC
+  category: anomalies
+  check: anom_probe
+  params: {field: webclient}
+  severity: high
+  points: 20
+  source: probe
+  title: "Service WebClient actif sur des DC"
+  description: "Permet des coercitions d'authentification via HTTP, relayables vers LDAP."
+  remediation: "Désactiver le service WebClient sur les DC."
+  mitre: [{technique: T1187}]
+
+- id: A-COERCE-DC
+  category: anomalies
+  check: anom_probe
+  params: {field: coerce_interfaces}
+  severity: high
+  points: 20
+  source: probe
+  title: "Interfaces RPC de coercition accessibles sur les DC"
+  description: "MS-EFSR, MS-DFSNM, MS-FSRVP… permettent de forcer l'authentification du DC (PetitPotam & co)."
+  remediation: "Filtres RPC (netsh rpc filter) et désactivation des services inutiles ; EPA/signature partout."
+  mitre: [{technique: T1187}]
+
+- id: A-SMB-SIGNING-DC
+  category: anomalies
+  check: anom_probe
+  params: {field: smb_signing_required, bad: false}
+  severity: high
+  points: 20
+  source: probe
+  title: "Signature SMB non exigée sur les contrôleurs de domaine"
+  description: "Permet le relais NTLM vers SMB sur les DC."
+  remediation: "Exiger la signature SMB côté serveur sur les DC (et idéalement partout)."
+  mitre: [{technique: T1557.001}]
+
+- id: A-SMB-SIGNING-DISABLED
+  category: anomalies
+  check: anom_probe
+  params: {field: smb_signing_enabled, bad: false}
+  severity: high
+  points: 20
+  source: probe
+  title: "Signature SMB désactivée sur des DC"
+  description: "Aucun échange SMB avec ces DC ne peut être signé."
+  remediation: "Réactiver la signature SMB."
+  mitre: [{technique: T1557.001}]
+
+- id: A-LDAP-SIGNING
+  category: anomalies
+  check: anom_probe
+  params: {field: ldap_signing_required, bad: false}
+  severity: high
+  points: 20
+  source: probe
+  title: "Signature LDAP non exigée (vérifié par sonde)"
+  description: "Les DC acceptent des connexions LDAP non signées : relais NTLM vers LDAP possible."
+  remediation: "Exiger la signature LDAP sur les DC."
+  mitre: [{technique: T1557}]
+
+- id: A-LDAPS-CHANNEL-BINDING
+  category: anomalies
+  check: anom_probe
+  params: {field: ldaps_channel_binding_required, bad: false}
+  severity: high
+  points: 20
+  source: probe
+  title: "Channel binding LDAPS non exigé"
+  description: "Le relais NTLM vers LDAPS reste possible."
+  remediation: "LdapEnforceChannelBinding = 2 sur les DC."
+  mitre: [{technique: T1557}]
+
+- id: A-LDAPS-SSL
+  category: anomalies
+  check: anom_probe
+  params: {field: ldaps_protocols, bad_items: [SSLv2, SSLv3]}
+  severity: high
+  points: 20
+  source: probe
+  title: "LDAPS accepte SSL 2.0/3.0"
+  description: "Protocoles cassés permettant le déchiffrement des échanges."
+  remediation: "Désactiver SSL 2.0/3.0 (SCHANNEL) sur les DC."
+  mitre: [{technique: T1557}]
+
+- id: A-LDAPS-TLS-OLD
+  category: anomalies
+  check: anom_probe
+  params: {field: ldaps_protocols, bad_items: [TLSv1, TLSv1.1]}
+  severity: medium
+  points: 10
+  source: probe
+  title: "LDAPS accepte TLS 1.0/1.1"
+  description: "Protocoles obsolètes à désactiver."
+  remediation: "Désactiver TLS 1.0 et 1.1 sur les DC après vérification des clients."
+  mitre: [{technique: T1557, relation: related}]
+
+- id: A-NULL-SESSION
+  category: anomalies
+  check: anom_probe
+  params: {field: null_session}
+  severity: high
+  points: 20
+  source: probe
+  title: "Sessions nulles acceptées par des DC"
+  description: "Énumération des comptes et groupes sans authentification."
+  remediation: "RestrictAnonymous=1, RestrictAnonymousSAM=1, retirer les NullSessionPipes."
+  mitre: [{technique: T1087.002}]
+
+- id: A-ROOTDSE-ANON-BIND
+  category: anomalies
+  check: anom_probe
+  params: {field: anonymous_bind}
+  severity: medium
+  points: 10
+  source: probe
+  title: "Bind LDAP anonyme accepté au-delà du RootDSE"
+  description: "Un attaquant non authentifié peut interroger l'annuaire."
+  remediation: "Interdire les opérations anonymes (dSHeuristics, stratégie LDAP « Deny unauthenticated bind » sur 2025)."
+  mitre: [{technique: T1087.002}]
+
+- id: A-NETCEASE
+  category: anomalies
+  check: anom_probe
+  params: {field: net_session_enum_open}
+  severity: low
+  points: 5
+  source: probe
+  title: "Énumération des sessions réseau ouverte (NetSessionEnum)"
+  description: "Permet de localiser où les administrateurs sont connectés (cartographie BloodHound)."
+  remediation: "Restreindre SrvsvcSessionInfo (NetCease) sur les serveurs et DC."
+  mitre: [{technique: T1049}]
+
+- id: A-FAKE-PWD-CHANGE
+  category: anomalies
+  check: priv_fake_pwd_change
+  params: {privileged_only: false}
+  severity: medium
+  points: 10
+  title: "Faux changements de mot de passe détectés"
+  description: "pwdLastSet a été réinitialisé sans réel changement du secret (contournement de l'expiration)."
+  remediation: "Forcer un changement réel et restreindre la délégation d'écriture sur pwdLastSet."
+  mitre: [{technique: T1098}]

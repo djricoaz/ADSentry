@@ -1,0 +1,42 @@
+{
+	admin off
+	servers {
+		protocols h1 h2
+	}
+}
+
+http://{$ADSENTRY_HOSTNAME} {
+	redir https://{host}{uri} permanent
+}
+
+{$ADSENTRY_HOSTNAME} {
+	# ADSENTRY_TLS = « internal » (AC interne Caddy, par défaut) ou « /etc/adsentry/tls/cert.pem /etc/adsentry/tls/key.pem »
+	tls {$ADSENTRY_TLS}
+
+	# Authentification de base en attendant l'OIDC (Entra ID) prévu en phase 4
+	basic_auth {
+		{$ADSENTRY_ADMIN_USER} {$ADSENTRY_ADMIN_HASH}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'"
+		-Server
+	}
+
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+	handle {
+		root * /srv/web
+		try_files {path} /index.html
+		file_server
+	}
+	log {
+		output stdout
+		format json
+	}
+}

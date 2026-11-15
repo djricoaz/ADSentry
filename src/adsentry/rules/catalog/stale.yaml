@@ -1,0 +1,448 @@
+# Objets obsolètes — textes rédigés pour ADSentry.
+
+- id: S-INACTIVE-USERS
+  category: stale_objects
+  check: stale_inactive_users
+  params: {days: 180}
+  severity: medium
+  points: 10
+  title: "Comptes utilisateurs actifs mais inutilisés depuis plus de 6 mois"
+  description: "Des comptes activés ne se sont pas connectés depuis longtemps : cibles idéales d'une prise de contrôle discrète."
+  remediation: "Désactiver puis supprimer après validation métier ; mettre en place un processus de départ."
+  mitre: [{technique: T1078.002}]
+
+- id: S-INACTIVE-COMPUTERS
+  category: stale_objects
+  check: stale_inactive_computers
+  params: {days: 90}
+  severity: low
+  points: 5
+  title: "Comptes ordinateurs inactifs"
+  description: "Des comptes machines activés ne se sont pas authentifiés depuis plus de 90 jours."
+  remediation: "Désactiver les comptes machines orphelins et les déplacer dans une OU de quarantaine."
+  mitre: [{technique: T1078.002, relation: related}]
+
+- id: S-OBSOLETE-OS
+  category: stale_objects
+  check: stale_obsolete_os
+  # Windows 11 : 24H2 (26100) supporté jusqu'en oct. 2027 en Enterprise/Education, fin oct. 2026 en Pro/Famille.
+  # Table à maintenir à chaque fin de support Microsoft.
+  params: {win11_min_build: {Enterprise: 26100, Education: 26100, default: 26200}, lts_exceptions: [LTSC, LTSB]}
+  severity: high
+  points: 30
+  title: "Systèmes d'exploitation en fin de support"
+  description: "Des machines exécutent un OS qui ne reçoit plus de correctifs de sécurité (dont Windows 10 hors LTSC depuis octobre 2025)."
+  remediation: "Migrer, souscrire aux mises à jour étendues ou isoler (segmentation, aucun compte privilégié dessus)."
+  mitre: [{technique: T1210}]
+
+- id: S-OBSOLETE-DC
+  category: stale_objects
+  check: stale_obsolete_dc
+  severity: critical
+  points: 40
+  title: "Contrôleurs de domaine sous un OS en fin de support"
+  description: "Un DC non maintenu expose tout le domaine aux vulnérabilités publiées après sa fin de support."
+  remediation: "Promouvoir de nouveaux DC sur un OS supporté puis rétrograder les anciens."
+  mitre: [{technique: T1210}]
+
+- id: S-OS-EOL-SOON
+  category: stale_objects
+  check: stale_os_eol_soon
+  params: {days: 180}
+  severity: low
+  points: 5
+  title: "Systèmes atteignant la fin de support dans moins de 6 mois"
+  description: "Ces machines ne recevront bientôt plus de correctifs (ex. Windows Server 2016 le 12/01/2027)."
+  remediation: "Planifier la migration avant la date de fin de support."
+  mitre: [{technique: T1210, relation: related}]
+
+- id: S-PWD-NEVER-EXPIRES
+  category: stale_objects
+  check: stale_pwd_never_expires
+  severity: low
+  points: 5
+  title: "Mots de passe qui n'expirent jamais"
+  description: "Des comptes ont l'option « le mot de passe n'expire jamais » : un mot de passe compromis reste valable indéfiniment."
+  remediation: "Utiliser des gMSA pour les services ; sinon imposer une rotation ou une longueur forte via PSO."
+  mitre: [{technique: T1110, relation: related}]
+
+- id: S-PWD-NOT-REQUIRED
+  category: stale_objects
+  check: stale_pwd_not_required
+  severity: medium
+  points: 15
+  title: "Comptes pouvant avoir un mot de passe vide (PASSWD_NOTREQD)"
+  description: "Le drapeau PASSWD_NOTREQD autorise un mot de passe vide, quelle que soit la politique."
+  remediation: "Retirer le drapeau (userAccountControl) et forcer un changement de mot de passe."
+  mitre: [{technique: T1078.002}]
+
+- id: S-NO-LAPS
+  category: stale_objects
+  check: stale_no_laps
+  severity: medium
+  points: 15
+  title: "Postes et serveurs sans LAPS"
+  description: "Sans LAPS, le mot de passe administrateur local est souvent identique partout : un seul hash compromet le parc."
+  remediation: "Déployer Windows LAPS sur toutes les machines non-DC."
+  mitre: [{technique: T1078.003}, {technique: T1550.002, relation: related}]
+
+- id: S-RECYCLE-BIN
+  category: stale_objects
+  check: stale_recycle_bin
+  severity: low
+  points: 5
+  title: "Corbeille Active Directory désactivée"
+  description: "La restauration d'objets supprimés (par erreur ou par un attaquant) est compliquée."
+  remediation: "Enable-ADOptionalFeature 'Recycle Bin Feature'."
+  mitre: []
+
+- id: S-FUNCTIONAL-LEVEL
+  category: stale_objects
+  check: stale_functional_level
+  params: {min_level: 7}
+  severity: low
+  points: 5
+  title: "Niveau fonctionnel du domaine ou de la forêt obsolète"
+  description: "Un niveau fonctionnel ancien empêche des protections récentes (Protected Users complet, blindage Kerberos, AES…)."
+  remediation: "Retirer les DC anciens et relever les niveaux fonctionnels (2016 minimum)."
+  mitre: []
+
+- id: S-PRIMARY-GROUP
+  category: stale_objects
+  check: stale_primary_group
+  severity: medium
+  points: 15
+  title: "Groupe principal modifié (appartenance cachée)"
+  description: "L'appartenance via primaryGroupID n'apparaît pas dans l'attribut member : technique de persistance discrète."
+  remediation: "Remettre le groupe principal par défaut (Domain Users / Domain Computers) et vérifier l'origine."
+  mitre: [{technique: T1098}]
+
+- id: S-SID-HISTORY
+  category: stale_objects
+  check: stale_sid_history
+  severity: medium
+  points: 10
+  title: "Objets porteurs d'un SID History"
+  description: "Reliquat de migration qui ajoute des droits invisibles ; souvent oublié après la migration."
+  remediation: "Nettoyer sIDHistory une fois les ACL migrées (Get-ADUser -Properties SIDHistory)."
+  mitre: [{technique: T1134.005}]
+
+- id: S-DUPLICATE
+  category: stale_objects
+  check: stale_duplicate
+  severity: low
+  points: 5
+  title: "Comptes en doublon (conflits de réplication)"
+  description: "Objets CNF: ou $DUPLICATE- issus de conflits de réplication, souvent oubliés."
+  remediation: "Identifier l'objet légitime et supprimer le doublon."
+  mitre: []
+
+- id: S-DOMAIN-MIGRATION
+  category: stale_objects
+  check: stale_domain_migration
+  severity: medium
+  points: 10
+  title: "Compte de migration (« DOMAINE$$$ ») présent"
+  description: "Ce compte est créé par les outils de migration pour injecter du SID History ; il doit disparaître après migration."
+  remediation: "Supprimer le compte si aucune migration n'est en cours."
+  mitre: [{technique: T1134.005, relation: related}]
+
+- id: S-AES-NOT-ENABLED
+  category: stale_objects
+  check: stale_aes_not_enabled
+  severity: medium
+  points: 10
+  title: "Comptes de service sans support AES"
+  description: "Ces comptes n'utilisent que RC4 : tickets plus faciles à casser (Kerberoasting) et blocage du durcissement."
+  remediation: "Activer AES128/AES256 (msDS-SupportedEncryptionTypes) puis changer le mot de passe."
+  mitre: [{technique: T1558.003}]
+
+- id: S-COMPUTER-PWD-45
+  category: stale_objects
+  check: stale_computer_pwd_age
+  params: {min_days: 45, max_days: 90}
+  severity: low
+  points: 5
+  title: "Machines actives sans changement de mot de passe depuis 45 jours"
+  description: "Le mot de passe machine change normalement tous les 30 jours ; un écart signale une machine mal gérée."
+  remediation: "Vérifier la stratégie « Désactiver le changement de mot de passe du compte ordinateur » et l'état de la machine."
+  mitre: [{technique: T1078.002, relation: related}]
+
+- id: S-COMPUTER-PWD-90
+  category: stale_objects
+  check: stale_computer_pwd_age
+  params: {min_days: 90}
+  severity: medium
+  points: 10
+  title: "Machines actives sans changement de mot de passe depuis 90 jours"
+  description: "Un mot de passe machine figé facilite les tickets argent (Silver Ticket) persistants."
+  remediation: "Corriger la stratégie de changement de mot de passe machine ; réinitialiser le compte si nécessaire."
+  mitre: [{technique: T1558.002}]
+
+- id: S-CLUSTER-PWD
+  category: stale_objects
+  check: stale_cluster_pwd
+  params: {days: 90}
+  severity: low
+  points: 5
+  title: "Objets de cluster sans rotation de mot de passe"
+  description: "Les objets de nom de cluster (CNO/VCO) doivent changer régulièrement de mot de passe."
+  remediation: "Vérifier l'état du cluster et déclencher la réinitialisation du mot de passe des objets."
+  mitre: [{technique: T1078.002, relation: related}]
+
+- id: S-DC-PWD-LAST-SET
+  category: stale_objects
+  check: stale_dc_pwd
+  params: {days: 45}
+  severity: medium
+  points: 10
+  title: "DC sans changement de mot de passe machine depuis 45 jours"
+  description: "Indique un DC hors ligne, restauré ou mal configuré."
+  remediation: "Vérifier la santé du DC (dcdiag) ; le rétrograder s'il n'est plus utilisé."
+  mitre: []
+
+- id: S-DC-INACTIVE
+  category: stale_objects
+  check: stale_dc_inactive
+  params: {days: 45}
+  severity: medium
+  points: 10
+  title: "Contrôleurs de domaine inactifs"
+  description: "Un DC qui ne s'authentifie plus est probablement éteint mais toujours déclaré : risque de restauration d'un état ancien."
+  remediation: "Nettoyer les métadonnées du DC (ntdsutil) s'il est définitivement arrêté."
+  mitre: []
+
+- id: S-DC-NOT-UPDATED
+  category: stale_objects
+  check: stale_dc_not_updated
+  params: {days: 120}
+  severity: high
+  points: 20
+  source: probe
+  title: "Contrôleurs de domaine non mis à jour depuis plus de 4 mois"
+  description: "Des correctifs de sécurité critiques (Kerberos, Netlogon, LDAP) manquent probablement."
+  remediation: "Appliquer les mises à jour cumulatives mensuelles sur tous les DC."
+  mitre: [{technique: T1210}]
+
+- id: S-DC-SUBNET-MISSING
+  category: stale_objects
+  check: stale_dc_subnet_missing
+  severity: low
+  points: 5
+  title: "Adresse IP de DC absente des sous-réseaux AD"
+  description: "Les clients ne trouvent pas le DC le plus proche ; signe d'une topologie de sites incomplète."
+  remediation: "Déclarer tous les sous-réseaux dans Sites et services Active Directory."
+  mitre: []
+
+- id: S-DC-REGISTRATION
+  category: stale_objects
+  check: stale_dc_registration
+  severity: medium
+  points: 10
+  title: "Contrôleurs de domaine mal enregistrés"
+  description: "Objet NTDS Settings, serverReference ou OU incohérents : DC fantôme ou objet modifié."
+  remediation: "Corriger l'enregistrement ou nettoyer les métadonnées du DC."
+  mitre: []
+
+- id: S-DEFAULT-OU-CHANGED
+  category: stale_objects
+  check: stale_default_ou_changed
+  severity: info
+  points: 0
+  title: "Conteneurs par défaut des nouveaux comptes redirigés"
+  description: "redirusr/redircmp ont été utilisés : vérifier que l'OU cible a des GPO et délégations adaptées."
+  remediation: "Contrôler les ACL et GPO de l'OU de destination."
+  mitre: []
+
+- id: S-JAVA-SCHEMA
+  category: stale_objects
+  check: stale_java_schema
+  severity: low
+  points: 5
+  title: "Extension de schéma Java (RFC 2713) présente"
+  description: "Ces attributs permettent de stocker des objets Java sérialisés dans l'annuaire (risque d'injection JNDI)."
+  remediation: "Vérifier qu'aucune application ne les utilise et contrôler les droits d'écriture associés."
+  mitre: []
+
+- id: S-SCHEMA-VULN-CLASS
+  category: stale_objects
+  check: stale_schema_vuln_class
+  severity: medium
+  points: 15
+  title: "Classes de schéma permettant de créer des comptes contournant les quotas"
+  description: "Des classes dérivées de computer/user peuvent être instanciées par des utilisateurs (contournement de MachineAccountQuota)."
+  remediation: "Restreindre possSuperiors/defaultSecurityDescriptor des classes concernées."
+  mitre: [{technique: T1136.002}]
+
+- id: S-SMB1
+  category: stale_objects
+  check: stale_smb1
+  severity: high
+  points: 20
+  source: probe
+  title: "SMBv1 actif sur des contrôleurs de domaine"
+  description: "Protocole obsolète, sans protections modernes, cible de vers (EternalBlue)."
+  remediation: "Désactiver SMB1 (Set-SmbServerConfiguration -EnableSMB1Protocol $false)."
+  mitre: [{technique: T1210}]
+
+- id: S-VULN-MS17-010
+  category: stale_objects
+  check: stale_ms17_010
+  severity: critical
+  points: 50
+  source: probe
+  title: "DC vulnérable à MS17-010"
+  description: "Exécution de code à distance non authentifiée sur le DC."
+  remediation: "Appliquer immédiatement les correctifs et désactiver SMBv1."
+  mitre: [{technique: T1210}]
+
+- id: S-VULN-MS14-068
+  category: stale_objects
+  check: stale_ms14_068
+  severity: critical
+  points: 50
+  source: probe
+  title: "DC vulnérable à MS14-068"
+  description: "Un utilisateur du domaine peut forger un ticket Kerberos d'administrateur."
+  remediation: "Appliquer le correctif ou remplacer le DC."
+  mitre: [{technique: T1068}]
+
+- id: S-KERBEROS-ARMORING-DC
+  category: stale_objects
+  check: anom_gpo_registry_missing
+  params:
+    key: 'machine\software\microsoft\windows\currentversion\policies\system\kdc\parameters\enablecbacandarmor'
+    good: [1]
+    scope: dcs
+    label: "Blindage Kerberos (FAST) non activé côté KDC"
+  severity: low
+  points: 5
+  source: gpo
+  title: "Blindage Kerberos (FAST) non activé sur les DC"
+  description: "Le blindage protège les échanges de pré-authentification contre l'écoute et le cassage hors ligne."
+  remediation: "GPO DC : « Prise en charge du KDC pour les revendications et le blindage Kerberos » = Pris en charge."
+  mitre: [{technique: T1558, relation: related}]
+
+- id: S-KERBEROS-ARMORING
+  category: stale_objects
+  check: anom_gpo_registry_missing
+  params:
+    key: 'machine\software\microsoft\windows\currentversion\policies\system\kerberos\parameters\enablecbacandarmor'
+    good: [1]
+    scope: domain
+    label: "Blindage Kerberos non activé côté clients"
+  severity: low
+  points: 5
+  source: gpo
+  title: "Blindage Kerberos (FAST) non activé sur les clients"
+  description: "Les clients ne demandent pas le blindage Kerberos."
+  remediation: "GPO : « Prise en charge du client Kerberos pour les revendications et le blindage » = Activé."
+  mitre: [{technique: T1558, relation: related}]
+
+- id: S-WSUS-HTTP
+  category: stale_objects
+  check: anom_gpo_registry_prefix
+  params:
+    key: 'machine\software\policies\microsoft\windows\windowsupdate\wuserver'
+    prefix: 'http://'
+  severity: high
+  points: 30
+  source: gpo
+  title: "WSUS configuré en HTTP"
+  description: "Un attaquant en position d'interception peut injecter de fausses mises à jour exécutées en SYSTEM."
+  remediation: "Configurer WSUS en HTTPS (port 8531) et mettre à jour la GPO."
+  mitre: [{technique: T1557}, {technique: T1072, relation: related}]
+
+- id: S-WSUS-USERPROXY
+  category: stale_objects
+  check: anom_gpo_registry_bad
+  params:
+    key: 'machine\software\policies\microsoft\windows\windowsupdate\setproxybehaviorforupdatedetection'
+    bad: [1]
+  severity: medium
+  points: 15
+  source: gpo
+  title: "WSUS autorisé à utiliser le proxy de l'utilisateur"
+  description: "Un utilisateur local peut détourner la détection des mises à jour vers un proxy malveillant."
+  remediation: "Désactiver « Autoriser le proxy utilisateur pour la détection des mises à jour »."
+  mitre: [{technique: T1557}]
+
+- id: S-WSUS-NOPINNING
+  category: stale_objects
+  check: anom_gpo_registry_bad
+  params:
+    key: 'machine\software\policies\microsoft\windows\windowsupdate\donotenforceenterprisetlscertpinningforupdatedetection'
+    bad: [1]
+  severity: medium
+  points: 10
+  source: gpo
+  title: "Épinglage de certificat WSUS désactivé"
+  description: "La validation renforcée du certificat du serveur WSUS est désactivée."
+  remediation: "Réactiver l'épinglage TLS pour la détection des mises à jour."
+  mitre: [{technique: T1557}]
+
+- id: S-WSUS-WEAK-TLS
+  category: stale_objects
+  check: anom_tls_probe
+  params: {service: wsus, bad_protocols: [SSLv2, SSLv3, TLSv1, TLSv1.1]}
+  severity: medium
+  points: 10
+  source: probe
+  title: "WSUS accepte des protocoles TLS obsolètes"
+  description: "SSL/TLS 1.0/1.1 affaiblissent la protection du canal de mise à jour."
+  remediation: "Désactiver SSL 3.0, TLS 1.0 et 1.1 sur le serveur WSUS."
+  mitre: [{technique: T1557}]
+
+- id: S-FOLDER-OPTIONS
+  category: stale_objects
+  check: anom_gpo_folder_options
+  severity: low
+  points: 5
+  source: gpo
+  title: "Les scripts (.js, .vbs, .hta…) s'exécutent par double-clic"
+  description: "Vecteur classique d'infection par pièce jointe ; ces extensions devraient s'ouvrir dans le Bloc-notes."
+  remediation: "GPP Options des dossiers : associer js, jse, vbs, vbe, wsf, wsh, hta à notepad.exe."
+  mitre: [{technique: T1059.005}, {technique: T1059.007, relation: related}]
+
+- id: S-DEFENDER-ASR
+  category: stale_objects
+  check: anom_gpo_asr
+  params:
+    rules:
+      - 9e6c4e1f-7d60-472f-ba1a-a39ef669e4b2  # vol d'identifiants LSASS
+      - d4f940ab-401b-4efc-aadc-ad5f3c50688a  # processus enfants Office
+      - 3b576869-a4ec-4529-8536-b80a7769e899  # contenu exécutable créé par Office
+  severity: medium
+  points: 10
+  source: gpo
+  title: "Règles de réduction de la surface d'attaque (ASR) non appliquées"
+  description: "Les règles ASR essentielles de Microsoft Defender (dont la protection de LSASS) ne sont pas en mode blocage."
+  remediation: "Activer ces règles ASR en mode Blocage (1) via GPO ou Intune après une phase d'audit."
+  mitre: [{technique: T1003.001}]
+
+- id: S-FIREWALL-SCRIPT
+  category: stale_objects
+  check: anom_gpo_firewall_scripts
+  severity: low
+  points: 5
+  source: gpo
+  title: "Moteurs de script autorisés à joindre Internet"
+  description: "wscript, cscript ou mshta peuvent télécharger une charge malveillante."
+  remediation: "Règles de pare-feu sortantes bloquant ces exécutables via GPO."
+  mitre: [{technique: T1059.005}]
+
+- id: S-TERMINAL-SERVICES-GPO
+  category: stale_objects
+  check: anom_gpo_registry_missing
+  params:
+    key: 'machine\software\policies\microsoft\windows nt\terminal services\userauthentication'
+    good: [1]
+    scope: any
+    label: "NLA non imposée pour RDP"
+  severity: low
+  points: 5
+  source: gpo
+  title: "Authentification au niveau réseau (NLA) non imposée pour RDP"
+  description: "Sans NLA, l'écran de connexion RDP est exposé avant toute authentification."
+  remediation: "GPO : « Exiger l'authentification utilisateur pour les connexions à distance (NLA) » = Activé."
+  mitre: [{technique: T1021.001}]

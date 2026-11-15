@@ -1,0 +1,1959 @@
+{
+ "schema_version": "2",
+ "collected_at": "2026-11-01T10:00:00Z",
+ "collector": "fixture-vulnerable",
+ "domain": {
+  "name": "corp.local",
+  "netbios": "CORP",
+  "sid": "S-1-5-21-1000-2000-3000",
+  "functional_level": 7,
+  "forest_functional_level": 6,
+  "machine_account_quota": 10,
+  "krbtgt_pwd_last_set": "2022-03-01T00:00:00Z",
+  "recycle_bin": false,
+  "ds_heuristics": "00100021010000010002100000020",
+  "min_pwd_length": 7,
+  "psos": [],
+  "last_backup": "2026-09-01T00:00:00Z",
+  "sysvol_replication": "ntfrs",
+  "subnets": [
+   "10.0.1.0/24"
+  ],
+  "default_users_container": "OU=NewUsers,DC=corp,DC=local",
+  "java_schema": true,
+  "vulnerable_schema_classes": [
+   "customComputer"
+  ],
+  "unprotected_ous": [
+   "OU=Paris,DC=corp,DC=local"
+  ],
+  "display_specifier_actions": [
+   "\\\\tools.other.local\\admin\\menu.exe"
+  ],
+  "smartcard_pwd_rotation": false,
+  "protected_users_exists": true,
+  "exchange_present": true,
+  "pre2k_compat_members": [
+   "S-1-5-7",
+   "S-1-5-11",
+   "S-1-5-21-1000-2000-3000-1104"
+  ]
+ },
+ "users": [
+  {
+   "sam": "Administrator",
+   "sid": "S-1-5-21-1000-2000-3000-500",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-512",
+    "S-1-5-32-544"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2020-01-01T00:00:00Z",
+   "admin_count": true,
+   "mail": "admin@corp.local",
+   "password_never_expires": true
+  },
+  {
+   "sam": "Guest",
+   "sid": "S-1-5-21-1000-2000-3000-501",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-514"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "primary_group_id": 514
+  },
+  {
+   "sam": "krbtgt",
+   "sid": "S-1-5-21-1000-2000-3000-502",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "enabled": false,
+   "spns": [
+    "kadmin/changepw"
+   ]
+  },
+  {
+   "sam": "krbtgt_12345",
+   "sid": "S-1-5-21-1000-2000-3000-1501",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "enabled": false
+  },
+  {
+   "sam": "krbtgt_99999",
+   "sid": "S-1-5-21-1000-2000-3000-1502",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "enabled": false
+  },
+  {
+   "sam": "svc_sql_admin",
+   "sid": "S-1-5-21-1000-2000-3000-1101",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-512"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "admin_count": true,
+   "spns": [
+    "MSSQLSvc/sql01.corp.local:1433"
+   ]
+  },
+  {
+   "sam": "adm_old",
+   "sid": "S-1-5-21-1000-2000-3000-1111",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-512"
+   ],
+   "last_logon": "2025-01-01T08:00:00Z",
+   "pwd_last_set": "2026-06-01T00:00:00Z",
+   "admin_count": true,
+   "dont_require_preauth": true,
+   "unicode_pwd_last_change": "2023-01-01T00:00:00Z"
+  },
+  {
+   "sam": "svc_web",
+   "sid": "S-1-5-21-1000-2000-3000-1102",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "spns": [
+    "HTTP/intranet.corp.local"
+   ],
+   "supported_enc_types": 4
+  },
+  {
+   "sam": "j.doe",
+   "sid": "S-1-5-21-1000-2000-3000-1103",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-10-01T00:00:00Z",
+   "dont_require_preauth": true,
+   "upn": "svc_web@corp.local",
+   "unicode_pwd_last_change": "2026-01-01T00:00:00Z"
+  },
+  {
+   "sam": "old.user",
+   "sid": "S-1-5-21-1000-2000-3000-1104",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2025-01-01T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "password_never_expires": true,
+   "pwd_not_required": true
+  },
+  {
+   "sam": "backup_op",
+   "sid": "S-1-5-21-1000-2000-3000-1106",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "m.martin",
+   "sid": "S-1-5-21-1000-2000-3000-1107",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "alt_security_identities": [
+    "X509:<RFC822>m.martin@corp.local"
+   ],
+   "reversible_encryption": true,
+   "use_des_only": true
+  },
+  {
+   "sam": "a.strong",
+   "sid": "S-1-5-21-1000-2000-3000-1108",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "alt_security_identities": [
+    "X509:<I>DC=local,DC=corp,CN=CORP-CA<SR>1a2b3c4d"
+   ]
+  },
+  {
+   "sam": "hidden.admin",
+   "sid": "S-1-5-21-1000-2000-3000-1112",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "primary_group_id": 512,
+   "sid_history": [
+    "S-1-5-21-1000-2000-3000-1105"
+   ]
+  },
+  {
+   "sam": "migrated.user",
+   "sid": "S-1-5-21-1000-2000-3000-1113",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "sid_history": [
+    "S-1-5-21-9999-9999-9999-1500",
+    "S-1-5-21-7777-7777-7777-512"
+   ]
+  },
+  {
+   "sam": "ex.admin",
+   "sid": "S-1-5-21-1000-2000-3000-1114",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "admin_count": true
+  },
+  {
+   "sam": "$DUPLICATE-1f2a",
+   "sid": "S-1-5-21-1000-2000-3000-1115",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "CORP$$$",
+   "sid": "S-1-5-21-1000-2000-3000-1116",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "unix.user",
+   "sid": "S-1-5-21-1000-2000-3000-1117",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "has_unix_password": true
+  },
+  {
+   "sam": "sc.user",
+   "sid": "S-1-5-21-1000-2000-3000-1118",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2024-01-01T00:00:00Z",
+   "smartcard_required": true
+  },
+  {
+   "sam": "spn.trick",
+   "sid": "S-1-5-21-1000-2000-3000-1119",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "spns": [
+    "HTTP/intranet​.corp.local"
+   ]
+  },
+  {
+   "sam": "deleg.user",
+   "sid": "S-1-5-21-1000-2000-3000-1120",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "allowed_to_delegate_to": [
+    "krbtgt/CORP.LOCAL",
+    "cifs/ghost.corp.local"
+   ]
+  },
+  {
+   "sam": "script.user",
+   "sid": "S-1-5-21-1000-2000-3000-1121",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "script_path": "\\\\partner.local\\netlogon\\logon.bat"
+  },
+  {
+   "sam": "helpdesk.lead",
+   "sid": "S-1-5-21-1000-2000-3000-1400",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "dev1",
+   "sid": "S-1-5-21-1000-2000-3000-1401",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "adm01",
+   "sid": "S-1-5-21-1000-2000-3000-1601",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-512",
+    "S-1-5-21-1000-2000-3000-525"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "admin_count": true,
+   "in_protected_users": true,
+   "sensitive_no_delegation": true
+  },
+  {
+   "sam": "adm02",
+   "sid": "S-1-5-21-1000-2000-3000-1602",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-512",
+    "S-1-5-21-1000-2000-3000-525"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "admin_count": true,
+   "in_protected_users": true,
+   "sensitive_no_delegation": true
+  },
+  {
+   "sam": "adm03",
+   "sid": "S-1-5-21-1000-2000-3000-1603",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-512",
+    "S-1-5-21-1000-2000-3000-525"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "admin_count": true,
+   "in_protected_users": true,
+   "sensitive_no_delegation": true
+  },
+  {
+   "sam": "adm04",
+   "sid": "S-1-5-21-1000-2000-3000-1604",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-512",
+    "S-1-5-21-1000-2000-3000-525"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "admin_count": true,
+   "in_protected_users": true,
+   "sensitive_no_delegation": true
+  },
+  {
+   "sam": "adm05",
+   "sid": "S-1-5-21-1000-2000-3000-1605",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-512",
+    "S-1-5-21-1000-2000-3000-525"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "admin_count": true,
+   "in_protected_users": true,
+   "sensitive_no_delegation": true
+  },
+  {
+   "sam": "adm06",
+   "sid": "S-1-5-21-1000-2000-3000-1606",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-512",
+    "S-1-5-21-1000-2000-3000-525"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "admin_count": true,
+   "in_protected_users": true,
+   "sensitive_no_delegation": true
+  },
+  {
+   "sam": "adm07",
+   "sid": "S-1-5-21-1000-2000-3000-1607",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-512",
+    "S-1-5-21-1000-2000-3000-525"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "admin_count": true,
+   "in_protected_users": true,
+   "sensitive_no_delegation": true
+  },
+  {
+   "sam": "adm08",
+   "sid": "S-1-5-21-1000-2000-3000-1608",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-512",
+    "S-1-5-21-1000-2000-3000-525"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "admin_count": true,
+   "in_protected_users": true,
+   "sensitive_no_delegation": true
+  },
+  {
+   "sam": "adm09",
+   "sid": "S-1-5-21-1000-2000-3000-1609",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-512",
+    "S-1-5-21-1000-2000-3000-525"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "admin_count": true,
+   "in_protected_users": true,
+   "sensitive_no_delegation": true
+  },
+  {
+   "sam": "user001",
+   "sid": "S-1-5-21-1000-2000-3000-2001",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user002",
+   "sid": "S-1-5-21-1000-2000-3000-2002",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user003",
+   "sid": "S-1-5-21-1000-2000-3000-2003",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user004",
+   "sid": "S-1-5-21-1000-2000-3000-2004",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user005",
+   "sid": "S-1-5-21-1000-2000-3000-2005",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user006",
+   "sid": "S-1-5-21-1000-2000-3000-2006",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user007",
+   "sid": "S-1-5-21-1000-2000-3000-2007",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user008",
+   "sid": "S-1-5-21-1000-2000-3000-2008",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user009",
+   "sid": "S-1-5-21-1000-2000-3000-2009",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user010",
+   "sid": "S-1-5-21-1000-2000-3000-2010",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user011",
+   "sid": "S-1-5-21-1000-2000-3000-2011",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user012",
+   "sid": "S-1-5-21-1000-2000-3000-2012",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user013",
+   "sid": "S-1-5-21-1000-2000-3000-2013",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user014",
+   "sid": "S-1-5-21-1000-2000-3000-2014",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user015",
+   "sid": "S-1-5-21-1000-2000-3000-2015",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user016",
+   "sid": "S-1-5-21-1000-2000-3000-2016",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user017",
+   "sid": "S-1-5-21-1000-2000-3000-2017",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user018",
+   "sid": "S-1-5-21-1000-2000-3000-2018",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user019",
+   "sid": "S-1-5-21-1000-2000-3000-2019",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user020",
+   "sid": "S-1-5-21-1000-2000-3000-2020",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user021",
+   "sid": "S-1-5-21-1000-2000-3000-2021",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user022",
+   "sid": "S-1-5-21-1000-2000-3000-2022",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user023",
+   "sid": "S-1-5-21-1000-2000-3000-2023",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user024",
+   "sid": "S-1-5-21-1000-2000-3000-2024",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user025",
+   "sid": "S-1-5-21-1000-2000-3000-2025",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user026",
+   "sid": "S-1-5-21-1000-2000-3000-2026",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user027",
+   "sid": "S-1-5-21-1000-2000-3000-2027",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user028",
+   "sid": "S-1-5-21-1000-2000-3000-2028",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user029",
+   "sid": "S-1-5-21-1000-2000-3000-2029",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user030",
+   "sid": "S-1-5-21-1000-2000-3000-2030",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user031",
+   "sid": "S-1-5-21-1000-2000-3000-2031",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user032",
+   "sid": "S-1-5-21-1000-2000-3000-2032",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user033",
+   "sid": "S-1-5-21-1000-2000-3000-2033",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user034",
+   "sid": "S-1-5-21-1000-2000-3000-2034",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user035",
+   "sid": "S-1-5-21-1000-2000-3000-2035",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user036",
+   "sid": "S-1-5-21-1000-2000-3000-2036",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user037",
+   "sid": "S-1-5-21-1000-2000-3000-2037",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user038",
+   "sid": "S-1-5-21-1000-2000-3000-2038",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user039",
+   "sid": "S-1-5-21-1000-2000-3000-2039",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user040",
+   "sid": "S-1-5-21-1000-2000-3000-2040",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user041",
+   "sid": "S-1-5-21-1000-2000-3000-2041",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user042",
+   "sid": "S-1-5-21-1000-2000-3000-2042",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user043",
+   "sid": "S-1-5-21-1000-2000-3000-2043",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user044",
+   "sid": "S-1-5-21-1000-2000-3000-2044",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user045",
+   "sid": "S-1-5-21-1000-2000-3000-2045",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user046",
+   "sid": "S-1-5-21-1000-2000-3000-2046",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user047",
+   "sid": "S-1-5-21-1000-2000-3000-2047",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user048",
+   "sid": "S-1-5-21-1000-2000-3000-2048",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user049",
+   "sid": "S-1-5-21-1000-2000-3000-2049",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user050",
+   "sid": "S-1-5-21-1000-2000-3000-2050",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user051",
+   "sid": "S-1-5-21-1000-2000-3000-2051",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user052",
+   "sid": "S-1-5-21-1000-2000-3000-2052",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user053",
+   "sid": "S-1-5-21-1000-2000-3000-2053",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user054",
+   "sid": "S-1-5-21-1000-2000-3000-2054",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "user055",
+   "sid": "S-1-5-21-1000-2000-3000-2055",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  }
+ ],
+ "computers": [
+  {
+   "name": "DC01",
+   "sid": "S-1-5-21-1000-2000-3000-1000",
+   "dns_hostname": "dc01.corp.local",
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-08-01T00:00:00Z",
+   "laps": false,
+   "os": "Windows Server 2012 R2 Datacenter",
+   "os_build": 9600,
+   "is_dc": true,
+   "ip": "10.0.0.10",
+   "owner_sid": "S-1-5-21-1000-2000-3000-1103",
+   "last_update": "2026-05-01T00:00:00Z",
+   "registration_issues": [
+    "Objet NTDS Settings absent"
+   ],
+   "allowed_to_delegate_to": [
+    "cifs/fs01.corp.local"
+   ],
+   "primary_group_id": 516
+  },
+  {
+   "name": "DC02",
+   "sid": "S-1-5-21-1000-2000-3000-1001",
+   "dns_hostname": "dc02.corp.local",
+   "last_logon": "2026-08-01T00:00:00Z",
+   "pwd_last_set": "2026-10-20T00:00:00Z",
+   "laps": false,
+   "os": "Windows Server 2025 Datacenter",
+   "os_build": 26100,
+   "is_dc": true,
+   "ip": "10.0.1.11",
+   "rbcd_principals": [
+    "S-1-5-21-1000-2000-3000-1105"
+   ],
+   "allowed_to_delegate_to": [
+    "ldap/dc01.corp.local"
+   ],
+   "protocol_transition": true,
+   "primary_group_id": 516
+  },
+  {
+   "name": "RODC01",
+   "sid": "S-1-5-21-1000-2000-3000-1002",
+   "dns_hostname": "rodc01.corp.local",
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-10-20T00:00:00Z",
+   "laps": false,
+   "os": "Windows Server 2022 Standard",
+   "os_build": 20348,
+   "is_dc": true,
+   "is_rodc": true,
+   "ip": "10.0.1.12",
+   "reveal_on_demand_sids": [
+    "S-1-5-21-1000-2000-3000-512"
+   ],
+   "revealed_sids": [
+    "S-1-5-21-1000-2000-3000-1101"
+   ],
+   "rodc_sysvol_write": true,
+   "primary_group_id": 521
+  },
+  {
+   "name": "WS01",
+   "sid": "S-1-5-21-1000-2000-3000-1105",
+   "dns_hostname": "ws01.corp.local",
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-10-20T00:00:00Z",
+   "laps": true,
+   "os": "Windows 11 Pro",
+   "os_build": 26100,
+   "creator_sid": "S-1-5-21-1000-2000-3000-1103",
+   "primary_group_id": 515
+  },
+  {
+   "name": "SRV-OLD",
+   "sid": "S-1-5-21-1000-2000-3000-1109",
+   "dns_hostname": "srv-old.corp.local",
+   "last_logon": "2026-03-01T08:00:00Z",
+   "pwd_last_set": "2026-03-01T08:00:00Z",
+   "laps": false,
+   "os": "Windows Server 2012 R2 Standard",
+   "os_build": 9600,
+   "trusted_for_delegation": true
+  },
+  {
+   "name": "PC-45",
+   "sid": "S-1-5-21-1000-2000-3000-1130",
+   "dns_hostname": "pc-45.corp.local",
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-01T00:00:00Z",
+   "laps": true,
+   "os": "Windows 11 Enterprise",
+   "os_build": 26100
+  },
+  {
+   "name": "PC-90",
+   "sid": "S-1-5-21-1000-2000-3000-1131",
+   "dns_hostname": "pc-90.corp.local",
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-06-01T00:00:00Z",
+   "laps": true,
+   "os": "Windows 11 Enterprise",
+   "os_build": 26100,
+   "reversible_encryption": true,
+   "primary_group_id": 512
+  },
+  {
+   "name": "CLUSTER01",
+   "sid": "S-1-5-21-1000-2000-3000-1132",
+   "dns_hostname": "cluster01.corp.local",
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-01-01T00:00:00Z",
+   "laps": true,
+   "os": "Windows Server 2022 Standard",
+   "os_build": 20348,
+   "spns": [
+    "MSClusterVirtualServer/cluster01"
+   ]
+  },
+  {
+   "name": "SRV2016",
+   "sid": "S-1-5-21-1000-2000-3000-1133",
+   "dns_hostname": "srv2016.corp.local",
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-10-20T00:00:00Z",
+   "laps": true,
+   "os": "Windows Server 2016 Standard",
+   "os_build": 14393
+  },
+  {
+   "name": "PC-MISMATCH",
+   "sid": "S-1-5-21-1000-2000-3000-1134",
+   "dns_hostname": "dc01.corp.local",
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-10-20T00:00:00Z",
+   "laps": true,
+   "os": "Windows 11 Enterprise",
+   "os_build": 26100
+  },
+  {
+   "name": "AZUREADSSOACC",
+   "sid": "S-1-5-21-1000-2000-3000-1135",
+   "dns_hostname": "azureadssoacc.corp.local",
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2025-01-01T00:00:00Z",
+   "laps": false,
+   "os": null,
+   "os_build": null
+  }
+ ],
+ "groups": [
+  {
+   "sid": "S-1-5-21-1000-2000-3000-518",
+   "name": "Schema Admins",
+   "members": [
+    "S-1-5-21-1000-2000-3000-500"
+   ]
+  },
+  {
+   "sid": "S-1-5-32-548",
+   "name": "Account Operators",
+   "members": [
+    "S-1-5-21-1000-2000-3000-1103"
+   ]
+  },
+  {
+   "sid": "S-1-5-21-1000-2000-3000-1150",
+   "name": "DnsAdmins",
+   "members": [
+    "S-1-5-21-1000-2000-3000-1102"
+   ]
+  },
+  {
+   "sid": "S-1-5-21-1000-2000-3000-571",
+   "name": "Allowed RODC Password Replication Group",
+   "members": [
+    "S-1-5-21-1000-2000-3000-1104"
+   ]
+  },
+  {
+   "sid": "S-1-5-21-1000-2000-3000-572",
+   "name": "Denied RODC Password Replication Group",
+   "members": [
+    "S-1-5-21-1000-2000-3000-512",
+    "S-1-5-21-1000-2000-3000-516"
+   ]
+  },
+  {
+   "sid": "S-1-5-21-1000-2000-3000-525",
+   "name": "Protected Users",
+   "members": [
+    "S-1-5-21-1000-2000-3000-1601",
+    "S-1-5-21-1000-2000-3000-1602",
+    "S-1-5-21-1000-2000-3000-1603",
+    "S-1-5-21-1000-2000-3000-1604",
+    "S-1-5-21-1000-2000-3000-1605",
+    "S-1-5-21-1000-2000-3000-1606",
+    "S-1-5-21-1000-2000-3000-1607",
+    "S-1-5-21-1000-2000-3000-1608",
+    "S-1-5-21-1000-2000-3000-1609"
+   ]
+  },
+  {
+   "sid": "S-1-5-21-1000-2000-3000-1200",
+   "name": "PKI-Admins",
+   "members": []
+  },
+  {
+   "sid": "S-1-5-21-1000-2000-3000-1300",
+   "name": "Exchange Windows Permissions",
+   "members": []
+  },
+  {
+   "sid": "S-1-5-21-1000-2000-3000-1500",
+   "name": "Helpdesk",
+   "members": [
+    "S-1-5-21-1000-2000-3000-1400"
+   ]
+  }
+ ],
+ "trusts": [
+  {
+   "target": "partner.local",
+   "sid": "S-1-5-21-7777-7777-7777",
+   "sid_filtering": false,
+   "tgt_delegation": true,
+   "aes_enabled": false,
+   "last_change": "2026-01-01T00:00:00Z"
+  },
+  {
+   "target": "LEGACYNT4",
+   "trust_type": 1,
+   "direction": "outbound",
+   "last_change": "2026-10-30T08:00:00Z"
+  }
+ ],
+ "acl_edges": [
+  {
+   "principal_sid": "S-1-5-21-1000-2000-3000-1106",
+   "target": "corp.local",
+   "right": "DS-Replication-Get-Changes-All",
+   "target_type": "domain",
+   "target_sid": null
+  },
+  {
+   "principal_sid": "S-1-5-21-1000-2000-3000-516",
+   "target": "corp.local",
+   "right": "DS-Replication-Get-Changes-All",
+   "target_type": "domain",
+   "target_sid": null
+  },
+  {
+   "principal_sid": "S-1-5-11",
+   "target": "OU=Paris,DC=corp,DC=local",
+   "right": "GenericAll",
+   "target_type": "ou",
+   "target_sid": null
+  },
+  {
+   "principal_sid": "S-1-5-21-1000-2000-3000-1500",
+   "target": "OU=Paris,DC=corp,DC=local",
+   "right": "AllExtendedRights",
+   "target_type": "ou",
+   "target_sid": null
+  },
+  {
+   "principal_sid": "S-1-5-21-1000-2000-3000-1500",
+   "target": "OU=Paris,DC=corp,DC=local",
+   "right": "CreateChild-dMSA",
+   "target_type": "ou",
+   "target_sid": null
+  },
+  {
+   "principal_sid": "S-1-5-21-1000-2000-3000-1102",
+   "target": "CN=MicrosoftDNS,DC=DomainDnsZones",
+   "right": "GenericWrite",
+   "target_type": "dns",
+   "target_sid": null
+  },
+  {
+   "principal_sid": "S-1-5-21-1000-2000-3000-1300",
+   "target": "corp.local",
+   "right": "WriteDacl",
+   "target_type": "domain",
+   "target_sid": null
+  },
+  {
+   "principal_sid": "S-1-5-21-1000-2000-3000-1300",
+   "target": "CN=AdminSDHolder",
+   "right": "WriteDacl",
+   "target_type": "adminsdholder",
+   "target_sid": null
+  },
+  {
+   "principal_sid": "S-1-5-21-1000-2000-3000-1103",
+   "target": "CN=AdminSDHolder",
+   "right": "GenericAll",
+   "target_type": "adminsdholder",
+   "target_sid": null
+  },
+  {
+   "principal_sid": "S-1-5-21-1000-2000-3000-526",
+   "target": "corp.local",
+   "right": "WriteProperty",
+   "target_type": "domain",
+   "target_sid": null
+  },
+  {
+   "principal_sid": "S-1-5-11",
+   "target": "helpdesk.lead",
+   "right": "GenericWrite",
+   "target_type": "user",
+   "target_sid": "S-1-5-21-1000-2000-3000-1400"
+  },
+  {
+   "principal_sid": "S-1-5-21-1000-2000-3000-513",
+   "target": "helpdesk.lead",
+   "right": "GenericAll",
+   "target_type": "user",
+   "target_sid": "S-1-5-21-1000-2000-3000-1400"
+  },
+  {
+   "principal_sid": "S-1-5-21-1000-2000-3000-1400",
+   "target": "Domain Admins",
+   "right": "AddMember",
+   "target_type": "group",
+   "target_sid": "S-1-5-21-1000-2000-3000-512"
+  }
+ ],
+ "gpos": [
+  {
+   "guid": "{31B2F340-016D-11D2-945F-00C04FB984F9}",
+   "name": "Default Domain Policy",
+   "linked_to": [
+    "DC=corp,DC=local"
+   ],
+   "applies_to_domain": true,
+   "writers": [
+    "S-1-5-11"
+   ],
+   "security": {
+    "System Access": {
+     "MinimumPasswordLength": "7",
+     "ClearTextPassword": "1",
+     "LSAAnonymousNameLookup": "1"
+    },
+    "Privilege Rights": {
+     "SeDebugPrivilege": "*S-1-5-11",
+     "SeTrustedCredManAccessPrivilege": "*S-1-5-21-1000-2000-3000-1102"
+    }
+   },
+   "registry": {
+    "machine\\system\\currentcontrolset\\control\\lsa\\nolmhash": 0,
+    "machine\\system\\currentcontrolset\\control\\lsa\\limitblankpassworduse": 0,
+    "machine\\system\\currentcontrolset\\control\\lsa\\restrictanonymous": 0,
+    "machine\\software\\policies\\microsoft\\windows\\windowsupdate\\wuserver": "http://wsus.corp.local:8530",
+    "machine\\software\\policies\\microsoft\\windows\\windowsupdate\\setproxybehaviorforupdatedetection": 1,
+    "machine\\software\\policies\\microsoft\\windows\\windowsupdate\\donotenforceenterprisetlscertpinningforupdatedetection": 1,
+    "machine\\software\\microsoft\\windows nt\\currentversion\\setup\\recoveryconsole\\securitylevel": 1,
+    "machine\\software\\policies\\microsoft\\windows\\networkprovider\\hardenedpaths\\\\\\\\*\\sysvol": "RequireMutualAuthentication=0, RequireIntegrity=0"
+   },
+   "local_group_members": {
+    "S-1-5-32-544": [
+     "S-1-5-21-1000-2000-3000-513"
+    ]
+   },
+   "scripts": [
+    {
+     "path": "\\\\corp.local\\netlogon\\map.bat",
+     "writers": [
+      "S-1-5-11"
+     ]
+    }
+   ],
+   "files": [
+    {
+     "path": "\\\\partner.local\\share\\agent.msi",
+     "writers": [
+      "S-1-1-0"
+     ]
+    }
+   ],
+   "cpassword_files": [
+    "{31B2F340}\\Machine\\Preferences\\Groups\\Groups.xml"
+   ]
+  },
+  {
+   "guid": "{6AC1786C-016F-11D2-945F-00C04FB984F9}",
+   "name": "Default Domain Controllers Policy",
+   "linked_to": [
+    "OU=Domain Controllers,DC=corp,DC=local"
+   ],
+   "applies_to_dcs": true,
+   "security": {
+    "Privilege Rights": {
+     "SeInteractiveLogonRight": "*S-1-5-11,*S-1-5-32-544"
+    }
+   },
+   "registry": {
+    "machine\\system\\currentcontrolset\\control\\lsa\\lmcompatibilitylevel": 3,
+    "machine\\system\\currentcontrolset\\services\\ntds\\parameters\\ldapserverintegrity": 0,
+    "machine\\system\\currentcontrolset\\services\\netlogon\\parameters\\refusepasswordchange": 1
+   },
+   "audit": {
+    "Audit Logon": 1
+   }
+  },
+  {
+   "guid": "{11111111-2222-3333-4444-555555555555}",
+   "name": "Workstations",
+   "linked_to": [
+    "OU=Workstations,DC=corp,DC=local"
+   ],
+   "security": {
+    "System Access": {
+     "MinimumPasswordLength": "4"
+    }
+   }
+  }
+ ],
+ "dns_zones": [
+  {
+   "name": "corp.local",
+   "critical": true,
+   "dynamic_update": "nonsecure_and_secure",
+   "authenticated_users_create_child": true
+  },
+  {
+   "name": "_msdcs.corp.local",
+   "critical": true,
+   "zone_transfer": true
+  },
+  {
+   "name": "test.corp.local",
+   "dynamic_update": "nonsecure_and_secure"
+  }
+ ],
+ "dc_probes": [
+  {
+   "name": "DC01",
+   "smb1": true,
+   "smb_signing_enabled": false,
+   "smb_signing_required": false,
+   "ldap_signing_required": false,
+   "ldaps_channel_binding_required": false,
+   "ldaps_protocols": [
+    "SSLv3",
+    "TLSv1",
+    "TLSv1.2"
+   ],
+   "spooler": true,
+   "webclient": true,
+   "coerce_interfaces": [
+    "MS-EFSR",
+    "MS-DFSNM"
+   ],
+   "null_session": true,
+   "anonymous_bind": true,
+   "net_session_enum_open": true,
+   "ms17_010": true,
+   "ms14_068": true
+  }
+ ],
+ "tls_probes": [
+  {
+   "host": "wsus.corp.local",
+   "port": 8531,
+   "service": "wsus",
+   "protocols": [
+    "TLSv1",
+    "TLSv1.2"
+   ]
+  }
+ ],
+ "pki": {
+  "cas": [
+   {
+    "name": "CORP-CA",
+    "dns_host": "ca01.corp.local",
+    "edit_flags": 262144,
+    "interface_flags": 1601,
+    "web_enrollment_https": true,
+    "web_enrollment_epa": true,
+    "manage_ca_principals": [
+     "S-1-5-21-1000-2000-3000-512"
+    ],
+    "cert_key_size": 4096,
+    "cert_signature_algorithm": "sha256",
+    "cert_not_after": "2035-01-01T00:00:00Z",
+    "patched_cve_2024_49019": true
+   },
+   {
+    "name": "LEGACY-CA",
+    "dns_host": "ca02.corp.local",
+    "edit_flags": 0,
+    "interface_flags": 0,
+    "web_enrollment_http": true,
+    "disabled_extensions": [
+     "1.3.6.1.4.1.311.25.2"
+    ],
+    "manage_ca_principals": [
+     "S-1-5-11"
+    ],
+    "cert_key_size": 1024,
+    "cert_signature_algorithm": "sha1",
+    "cert_not_after": "2027-01-15T00:00:00Z",
+    "patched_cve_2024_49019": false
+   }
+  ],
+  "templates": [
+   {
+    "name": "User",
+    "schema_version": 1,
+    "published_on": [
+     "CORP-CA"
+    ],
+    "ekus": [
+     "1.3.6.1.5.5.7.3.2",
+     "1.3.6.1.4.1.311.10.3.4"
+    ],
+    "enroll_principals": [
+     "S-1-5-21-1000-2000-3000-513"
+    ],
+    "write_principals": [
+     "S-1-5-21-1000-2000-3000-512"
+    ]
+   },
+   {
+    "name": "VulnAuth",
+    "published_on": [
+     "CORP-CA"
+    ],
+    "ekus": [
+     "1.3.6.1.5.5.7.3.2"
+    ],
+    "name_flags": 1,
+    "enroll_principals": [
+     "S-1-5-21-1000-2000-3000-513"
+    ]
+   },
+   {
+    "name": "AnyPurpose",
+    "published_on": [
+     "CORP-CA"
+    ],
+    "ekus": [
+     "2.5.29.37.0"
+    ],
+    "enroll_principals": [
+     "S-1-5-11"
+    ]
+   },
+   {
+    "name": "EnrollAgent",
+    "published_on": [
+     "CORP-CA"
+    ],
+    "ekus": [
+     "1.3.6.1.4.1.311.20.2.1"
+    ],
+    "enroll_principals": [
+     "S-1-5-21-1000-2000-3000-513"
+    ]
+   },
+   {
+    "name": "WritableTpl",
+    "published_on": [
+     "CORP-CA"
+    ],
+    "ekus": [
+     "1.3.6.1.5.5.7.3.1"
+    ],
+    "enroll_principals": [
+     "S-1-5-21-1000-2000-3000-512"
+    ],
+    "write_principals": [
+     "S-1-5-11"
+    ]
+   },
+   {
+    "name": "NoSecExt",
+    "published_on": [
+     "CORP-CA"
+    ],
+    "ekus": [
+     "1.3.6.1.5.5.7.3.2"
+    ],
+    "enrollment_flags": 524288,
+    "enroll_principals": [
+     "S-1-5-21-1000-2000-3000-513"
+    ]
+   },
+   {
+    "name": "WebServer",
+    "schema_version": 1,
+    "published_on": [
+     "LEGACY-CA"
+    ],
+    "ekus": [
+     "1.3.6.1.5.5.7.3.1"
+    ],
+    "name_flags": 1,
+    "enroll_principals": [
+     "S-1-5-21-1000-2000-3000-513"
+    ]
+   },
+   {
+    "name": "PolicyLinked",
+    "published_on": [
+     "CORP-CA"
+    ],
+    "ekus": [
+     "1.3.6.1.5.5.7.3.2"
+    ],
+    "issuance_policies": [
+     "1.3.6.1.4.1.311.21.8.111.222.333"
+    ],
+    "enroll_principals": [
+     "S-1-5-21-1000-2000-3000-513"
+    ]
+   },
+   {
+    "name": "ApprovalRequired",
+    "published_on": [
+     "CORP-CA"
+    ],
+    "ekus": [
+     "1.3.6.1.5.5.7.3.2"
+    ],
+    "name_flags": 1,
+    "enrollment_flags": 2,
+    "enroll_principals": [
+     "S-1-5-21-1000-2000-3000-513"
+    ]
+   },
+   {
+    "name": "WeakKey",
+    "published_on": [
+     "CORP-CA"
+    ],
+    "ekus": [
+     "1.3.6.1.5.5.7.3.1"
+    ],
+    "key_size": 1024,
+    "enroll_principals": [
+     "S-1-5-21-1000-2000-3000-512"
+    ]
+   },
+   {
+    "name": "Unpublished",
+    "published_on": [],
+    "ekus": [
+     "1.3.6.1.5.5.7.3.2"
+    ],
+    "name_flags": 1,
+    "enroll_principals": [
+     "S-1-5-21-1000-2000-3000-513"
+    ]
+   },
+   {
+    "name": "LongAuth",
+    "published_on": [
+     "CORP-CA"
+    ],
+    "ekus": [
+     "1.3.6.1.4.1.311.20.2.2"
+    ],
+    "validity_days": 1825,
+    "enroll_principals": [
+     "S-1-5-21-1000-2000-3000-512"
+    ]
+   }
+  ],
+  "certificates": [
+   {
+    "subject": "CN=Old Root",
+    "store": "root",
+    "sig_hash": "md5",
+    "key_type": "rsa",
+    "key_size": 512,
+    "rsa_exponent": 3
+   },
+   {
+    "subject": "CN=Legacy Issuing",
+    "store": "intermediate",
+    "sig_hash": "sha1",
+    "key_type": "rsa",
+    "key_size": 1536,
+    "rsa_exponent": 65537
+   },
+   {
+    "subject": "CN=DSA CA",
+    "store": "ntauth",
+    "sig_hash": "sha256",
+    "key_type": "dsa",
+    "key_size": 2048
+   },
+   {
+    "subject": "CN=Token CA",
+    "store": "ntauth",
+    "sig_hash": "sha256",
+    "key_type": "rsa",
+    "key_size": 2048,
+    "rsa_exponent": 65537,
+    "roca": true
+   }
+  ],
+  "oid_group_links": {
+   "1.3.6.1.4.1.311.21.8.111.222.333": "S-1-5-21-1000-2000-3000-1200"
+  },
+  "object_acl": [
+   {
+    "principal_sid": "S-1-5-11",
+    "target": "CN=NTAuthCertificates",
+    "right": "0x40000",
+    "target_type": "object",
+    "target_sid": null
+   },
+   {
+    "principal_sid": "S-1-5-21-1000-2000-3000-519",
+    "target": "CN=NTAuthCertificates",
+    "right": "0xf01ff",
+    "target_type": "object",
+    "target_sid": null
+   }
+  ]
+ },
+ "dc_registry": {
+  "strong_cert_binding_enforcement": 1,
+  "certificate_mapping_methods": 24
+ },
+ "entra": {
+  "tenant_id": "00000000-0000-0000-0000-00000000c0de",
+  "name": "contoso",
+  "security_defaults": false,
+  "users_can_register_apps": true,
+  "users_can_consent": true,
+  "users_can_create_tenants": true,
+  "guest_role": "same_as_member",
+  "guest_invite_from": "everyone",
+  "federated_domains": [
+   "corp.com"
+  ],
+  "connect_version": "1.6.4.0",
+  "pim_available": true,
+  "users": [
+   {
+    "id": "u1",
+    "upn": "ga1@corp.com",
+    "mfa_registered": false,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z",
+    "on_prem_synced": true
+   },
+   {
+    "id": "u2",
+    "upn": "ga2@contoso.onmicrosoft.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z"
+   },
+   {
+    "id": "u3",
+    "upn": "ga3@contoso.onmicrosoft.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z"
+   },
+   {
+    "id": "u4",
+    "upn": "ga4@contoso.onmicrosoft.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z"
+   },
+   {
+    "id": "u5",
+    "upn": "ga5@contoso.onmicrosoft.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z"
+   },
+   {
+    "id": "u6",
+    "upn": "ga6@contoso.onmicrosoft.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z"
+   },
+   {
+    "id": "u7",
+    "upn": "ga7@contoso.onmicrosoft.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z"
+   },
+   {
+    "id": "u20",
+    "upn": "partner@ext.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z",
+    "user_type": "Guest"
+   },
+   {
+    "id": "u21",
+    "upn": "dormant@corp.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-01-01T00:00:00Z",
+    "created": "2024-01-01T00:00:00Z"
+   },
+   {
+    "id": "u22",
+    "upn": "oldguest@ext.com",
+    "mfa_registered": true,
+    "last_sign_in": null,
+    "created": "2024-01-01T00:00:00Z",
+    "user_type": "Guest"
+   },
+   {
+    "id": "u23",
+    "upn": "victim@corp.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z",
+    "risk_level": "high",
+    "risk_state": "atRisk"
+   },
+   {
+    "id": "u24",
+    "upn": "dev1@corp.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z"
+   },
+   {
+    "id": "u30",
+    "upn": "staff0@corp.com",
+    "mfa_registered": false,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z"
+   },
+   {
+    "id": "u31",
+    "upn": "staff1@corp.com",
+    "mfa_registered": false,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z"
+   },
+   {
+    "id": "u32",
+    "upn": "staff2@corp.com",
+    "mfa_registered": false,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z"
+   },
+   {
+    "id": "u33",
+    "upn": "staff3@corp.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z"
+   },
+   {
+    "id": "u34",
+    "upn": "staff4@corp.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z"
+   },
+   {
+    "id": "u35",
+    "upn": "staff5@corp.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z"
+   },
+   {
+    "id": "u36",
+    "upn": "staff6@corp.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z"
+   },
+   {
+    "id": "u37",
+    "upn": "staff7@corp.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z"
+   },
+   {
+    "id": "u38",
+    "upn": "staff8@corp.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z"
+   },
+   {
+    "id": "u39",
+    "upn": "staff9@corp.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z"
+   }
+  ],
+  "role_assignments": [
+   {
+    "role": "Global Administrator",
+    "role_template_id": "62e90394-69f5-4237-9190-012177145e10",
+    "principal_id": "u1"
+   },
+   {
+    "role": "Global Administrator",
+    "role_template_id": "62e90394-69f5-4237-9190-012177145e10",
+    "principal_id": "u2"
+   },
+   {
+    "role": "Global Administrator",
+    "role_template_id": "62e90394-69f5-4237-9190-012177145e10",
+    "principal_id": "u3"
+   },
+   {
+    "role": "Global Administrator",
+    "role_template_id": "62e90394-69f5-4237-9190-012177145e10",
+    "principal_id": "u4"
+   },
+   {
+    "role": "Global Administrator",
+    "role_template_id": "62e90394-69f5-4237-9190-012177145e10",
+    "principal_id": "u5"
+   },
+   {
+    "role": "Global Administrator",
+    "role_template_id": "62e90394-69f5-4237-9190-012177145e10",
+    "principal_id": "u6"
+   },
+   {
+    "role": "Global Administrator",
+    "role_template_id": "62e90394-69f5-4237-9190-012177145e10",
+    "principal_id": "u7"
+   },
+   {
+    "role": "Security Administrator",
+    "role_template_id": "194ae4cb-b126-40b2-bd5b-6091b380977d",
+    "principal_id": "u20"
+   },
+   {
+    "role": "Global Administrator",
+    "role_template_id": "62e90394-69f5-4237-9190-012177145e10",
+    "principal_id": "sp1",
+    "principal_type": "servicePrincipal"
+   }
+  ],
+  "apps": [
+   {
+    "id": "app1",
+    "app_id": "a1",
+    "name": "OldAutomation",
+    "graph_app_permissions": [
+     "RoleManagement.ReadWrite.Directory"
+    ],
+    "owners": [
+     "u24"
+    ],
+    "credentials": [
+     {
+      "kind": "password",
+      "start": "2024-01-01T00:00:00Z",
+      "end": "2029-01-01T00:00:00Z"
+     }
+    ]
+   },
+   {
+    "id": "sp2",
+    "app_id": "a2",
+    "name": "Mailer",
+    "kind": "servicePrincipal",
+    "graph_app_permissions": [
+     "Mail.Send"
+    ],
+    "credentials": [
+     {
+      "kind": "certificate",
+      "start": "2024-01-01T00:00:00Z",
+      "end": "2025-01-01T00:00:00Z"
+     }
+    ]
+   },
+   {
+    "id": "sp3",
+    "app_id": "a3",
+    "name": "SP-Persist",
+    "kind": "servicePrincipal",
+    "credentials": [
+     {
+      "kind": "password",
+      "start": "2026-10-01T00:00:00Z",
+      "end": "2027-01-01T00:00:00Z"
+     }
+    ]
+   },
+   {
+    "id": "sp1",
+    "app_id": "a4",
+    "name": "BackupApp",
+    "kind": "servicePrincipal"
+   }
+  ],
+  "ca_policies": [
+   {
+    "name": "MFA pilote",
+    "state": "enabledForReportingButNotEnforced",
+    "include_users": [
+     "All"
+    ],
+    "grant_controls": [
+     "mfa"
+    ]
+   }
+  ]
+ }
+}

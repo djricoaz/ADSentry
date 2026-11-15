@@ -1,0 +1,416 @@
+# Catalogue PKI / ADCS — ESC1 à ESC16 + hygiène.
+# Barème : critique 40-50 pts, élevé 20-30, moyen 10-15, faible 5. Score de catégorie plafonné à 100.
+# MITRE : T1649 (Steal or Forge Authentication Certificates) est la technique principale de toute la famille ESC.
+
+- id: PKI-ESC1
+  category: pki
+  check: adcs_esc1
+  severity: critical
+  points: 50
+  title: "Modèle permettant de choisir l'identité du certificat (ESC1)"
+  description: >
+    Un modèle publié autorise le demandeur à fournir lui-même le sujet/SAN, porte un EKU
+    d'authentification et est ouvert à des groupes larges sans approbation. Tout utilisateur
+    du domaine peut obtenir un certificat au nom d'un administrateur et s'authentifier avec.
+  remediation: >
+    Décocher « Fournir dans la demande » (onglet Nom du sujet) ou, si indispensable, activer
+    l'approbation du gestionnaire de certificats et restreindre l'inscription à un groupe dédié.
+    Vérifier les certificats déjà émis avec ce modèle et révoquer ceux au SAN suspect.
+  detection: "Sur la CA, auditer 4886/4887 et comparer le SAN du certificat émis au compte demandeur ; alerter si différents."
+  mitre:
+    - {technique: T1649}
+    - {technique: T1078.002, relation: related}
+  references:
+    - https://specterops.io/wp-content/uploads/sites/3/2022/06/Certified_Pre-Owned.pdf
+
+- id: PKI-ESC2
+  category: pki
+  check: adcs_esc2
+  severity: critical
+  points: 50
+  title: "Modèle « Any Purpose » ou sans EKU ouvert à tous (ESC2)"
+  description: >
+    Un certificat sans EKU ou avec l'EKU « Any Purpose » peut servir à n'importe quel usage,
+    y compris l'authentification ou l'inscription pour le compte d'autrui (agent d'inscription).
+  remediation: >
+    Remplacer l'EKU par les usages strictement nécessaires, restreindre l'inscription et
+    activer l'approbation manager pour les modèles qui doivent rester polyvalents.
+  mitre:
+    - {technique: T1649}
+  references:
+    - https://specterops.io/wp-content/uploads/sites/3/2022/06/Certified_Pre-Owned.pdf
+
+- id: PKI-ESC3
+  category: pki
+  check: adcs_esc3
+  severity: critical
+  points: 40
+  title: "Modèle d'agent d'inscription ouvert à tous (ESC3)"
+  description: >
+    Un modèle portant l'EKU « Certificate Request Agent » est accessible à des groupes larges.
+    Son détenteur peut demander des certificats au nom d'autres utilisateurs, dont des admins.
+  remediation: >
+    Restreindre l'inscription à des comptes d'agents dédiés et configurer les « restrictions
+    d'agent d'inscription » sur la CA (quels agents, pour quels modèles, pour quels utilisateurs).
+  mitre:
+    - {technique: T1649}
+  references:
+    - https://specterops.io/wp-content/uploads/sites/3/2022/06/Certified_Pre-Owned.pdf
+
+- id: PKI-ESC4
+  category: pki
+  check: adcs_esc4
+  severity: critical
+  points: 50
+  title: "Modèle de certificat modifiable par des utilisateurs non privilégiés (ESC4)"
+  description: >
+    Des groupes larges disposent de droits d'écriture (GenericAll, WriteDacl, WriteOwner,
+    WriteProperty) ou sont propriétaires d'un modèle : ils peuvent le rendre vulnérable à ESC1.
+  remediation: >
+    Retirer les droits d'écriture aux groupes non Tier 0 et redonner la propriété du modèle à
+    Enterprise Admins. Surveiller les modifications de modèles (événement 4899/5136).
+  detection: "Événement 5136 (modification d'objet) sur CN=Certificate Templates et 4899 sur la CA."
+  mitre:
+    - {technique: T1649}
+    - {technique: T1098, relation: related}
+  references:
+    - https://specterops.io/wp-content/uploads/sites/3/2022/06/Certified_Pre-Owned.pdf
+
+- id: PKI-ESC5
+  category: pki
+  check: adcs_esc5
+  severity: high
+  points: 30
+  title: "Objets PKI de la configuration modifiables (ESC5)"
+  description: >
+    Des groupes larges peuvent modifier des objets PKI sensibles (conteneurs Public Key Services,
+    NTAuthCertificates, objet ordinateur de la CA). Cela permet d'ajouter une CA de confiance
+    ou de compromettre la CA.
+  remediation: >
+    Aligner les ACL des objets PKI sur le modèle Tier 0 : seuls Enterprise Admins / Domain Admins
+    et SYSTEM doivent pouvoir écrire. Traiter le serveur CA comme un contrôleur de domaine.
+  mitre:
+    - {technique: T1649}
+    - {technique: T1484, relation: related}
+  references:
+    - https://specterops.io/wp-content/uploads/sites/3/2022/06/Certified_Pre-Owned.pdf
+
+- id: PKI-ESC6
+  category: pki
+  check: adcs_esc6
+  severity: critical
+  points: 40
+  title: "CA acceptant un SAN arbitraire dans toutes les demandes (ESC6)"
+  description: >
+    Le flag EDITF_ATTRIBUTESUBJECTALTNAME2 est activé : n'importe quel modèle d'authentification
+    accepte un SAN fourni par le demandeur. Depuis KB5014754, l'impact est réduit si le mapping
+    fort est imposé, mais il redevient critique combiné à ESC9/ESC16.
+  remediation: >
+    certutil -config "CA\Nom" -setreg policy\EditFlags -EDITF_ATTRIBUTESUBJECTALTNAME2
+    puis redémarrer le service CertSvc.
+  mitre:
+    - {technique: T1649}
+  references:
+    - https://support.microsoft.com/help/5014754
+
+- id: PKI-ESC7
+  category: pki
+  check: adcs_esc7
+  severity: critical
+  points: 50
+  title: "Droits d'administration de la CA accordés à des non-administrateurs (ESC7)"
+  description: >
+    ManageCA ou ManageCertificates est accordé à des groupes larges : ils peuvent activer des
+    modèles, modifier la configuration de la CA ou approuver des demandes en attente.
+  remediation: >
+    Limiter ManageCA et ManageCertificates à un groupe d'administrateurs PKI Tier 0.
+  mitre:
+    - {technique: T1649}
+  references:
+    - https://specterops.io/wp-content/uploads/sites/3/2022/06/Certified_Pre-Owned.pdf
+
+- id: PKI-ESC8
+  category: pki
+  check: adcs_esc8
+  severity: high
+  points: 30
+  title: "Inscription web exposée au relais NTLM (ESC8)"
+  description: >
+    Le service d'inscription web (certsrv) accepte NTLM en HTTP ou en HTTPS sans EPA. Une
+    authentification de contrôleur de domaine forcée puis relayée permet d'obtenir un
+    certificat de DC et de compromettre le domaine.
+  remediation: >
+    Désactiver l'inscription web si inutile ; sinon HTTPS uniquement, EPA « Requis » dans IIS
+    et désactivation de NTLM sur le site.
+  detection: "Journaux IIS de /certsrv : authentifications NTLM de comptes machines de DC ; événements 4887 pour des comptes DC depuis une IP inattendue."
+  mitre:
+    - {technique: T1649}
+    - {technique: T1557, relation: related}
+    - {technique: T1187, relation: related}
+  references:
+    - https://specterops.io/wp-content/uploads/sites/3/2022/06/Certified_Pre-Owned.pdf
+
+- id: PKI-ESC9
+  category: pki
+  check: adcs_esc9
+  severity: high
+  points: 20
+  title: "Modèle sans extension de sécurité et mapping fort non imposé (ESC9)"
+  description: >
+    Le modèle porte le flag CT_FLAG_NO_SECURITY_EXTENSION : le SID du demandeur n'est pas
+    inscrit dans le certificat. Si les DC n'imposent pas le mapping fort, un attaquant pouvant
+    modifier l'UPN d'un compte peut usurper une autre identité.
+  remediation: >
+    Retirer le flag (certutil -dstemplate <modèle> msPKI-Enrollment-Flag -0x80000) et passer
+    StrongCertificateBindingEnforcement à 2 sur tous les DC.
+  mitre:
+    - {technique: T1649}
+  references:
+    - https://github.com/ly4k/Certipy/wiki
+    - https://support.microsoft.com/help/5014754
+
+- id: PKI-ESC10
+  category: pki
+  check: adcs_esc10
+  severity: high
+  points: 30
+  title: "Mapping de certificats faible sur les contrôleurs de domaine (ESC10)"
+  description: >
+    StrongCertificateBindingEnforcement vaut 0/1 ou Schannel autorise le mapping par UPN :
+    les DC acceptent des certificats sans lien fort avec le compte (SID).
+  remediation: >
+    Appliquer les mises à jour cumulatives des DC, fixer StrongCertificateBindingEnforcement=2
+    et retirer le bit 0x4 de CertificateMappingMethods (Schannel).
+  mitre:
+    - {technique: T1649}
+  references:
+    - https://support.microsoft.com/help/5014754
+
+- id: PKI-ESC11
+  category: pki
+  check: adcs_esc11
+  severity: high
+  points: 30
+  title: "Interface RPC de la CA exposée au relais NTLM (ESC11)"
+  description: >
+    IF_ENFORCEENCRYPTICERTREQUEST n'est pas positionné : les demandes RPC (ICPR) non chiffrées
+    sont acceptées et peuvent être relayées depuis une authentification NTLM forcée.
+  remediation: >
+    certutil -setreg CA\InterfaceFlags +IF_ENFORCEENCRYPTICERTREQUEST puis redémarrer CertSvc.
+  mitre:
+    - {technique: T1649}
+    - {technique: T1557, relation: related}
+  references:
+    - https://github.com/ly4k/Certipy/wiki
+
+- id: PKI-ESC12
+  category: pki
+  check: manual
+  manual: true
+  severity: info
+  points: 0
+  title: "Clé privée de la CA sur YubiHSM accessible localement (ESC12) — vérification manuelle"
+  description: >
+    Lorsque la clé de la CA est stockée sur un YubiHSM, le mot de passe d'accès peut se trouver
+    dans le registre du serveur CA. Non vérifiable par LDAP : contrôle à faire sur le serveur.
+  remediation: >
+    Restreindre l'accès shell au serveur CA (Tier 0) et protéger le secret HSM.
+  mitre:
+    - {technique: T1552.004}
+  references:
+    - https://github.com/ly4k/Certipy/wiki
+
+- id: PKI-ESC13
+  category: pki
+  check: adcs_esc13
+  severity: high
+  points: 30
+  title: "Politique d'émission liée à un groupe (ESC13)"
+  description: >
+    Le modèle inclut une politique d'émission dont l'OID est lié à un groupe AD
+    (msDS-OIDToGroupLink). Le titulaire du certificat obtient l'appartenance à ce groupe
+    dans son ticket Kerberos.
+  remediation: >
+    Restreindre l'inscription au modèle aux seuls membres légitimes du groupe lié, ou
+    supprimer le lien OID→groupe s'il n'est plus nécessaire.
+  mitre:
+    - {technique: T1649}
+  references:
+    - https://github.com/ly4k/Certipy/wiki
+
+- id: PKI-ESC14
+  category: pki
+  check: adcs_esc14
+  severity: medium
+  points: 15
+  title: "Mappings explicites faibles (altSecurityIdentities) (ESC14)"
+  description: >
+    Des comptes utilisent un mapping explicite faible (sujet, émetteur+sujet, e-mail). Un
+    certificat émis à un autre sujet correspondant peut permettre de s'authentifier à leur place.
+  remediation: >
+    Remplacer par des mappings forts : X509:<I>…<SR>… (émetteur + numéro de série),
+    X509:<SKI>… ou X509:<SHA1-PUKEY>….
+  mitre:
+    - {technique: T1649}
+  references:
+    - https://support.microsoft.com/help/5014754
+
+- id: PKI-ESC15
+  category: pki
+  check: adcs_esc15
+  severity: critical
+  points: 50
+  title: "Modèle v1 avec sujet fourni sur CA non corrigée — EKUwu (ESC15 / CVE-2024-49019)"
+  description: >
+    Sur une CA non corrigée, un modèle de schéma v1 qui laisse le demandeur fournir le sujet
+    accepte des « Application Policies » injectées dans la demande, ce qui permet d'obtenir un
+    certificat d'authentification à l'identité de son choix.
+  remediation: >
+    Appliquer le correctif CVE-2024-49019 (novembre 2024) sur les CA, dupliquer les modèles v1
+    en v2+ et retirer « Fournir dans la demande » des modèles qui n'en ont pas besoin.
+  mitre:
+    - {technique: T1649}
+  references:
+    - https://www.trustedsec.com/blog/ekuwu-not-just-another-ad-cs-esc
+
+- id: PKI-ESC16
+  category: pki
+  check: adcs_esc16
+  severity: critical
+  points: 50
+  title: "Extension de sécurité désactivée sur toute la CA (ESC16)"
+  description: >
+    L'OID 1.3.6.1.4.1.311.25.2 figure dans DisableExtensionList : aucun certificat émis ne
+    contient le SID du demandeur, ce qui neutralise le mapping fort pour tous les modèles.
+  remediation: >
+    Retirer l'OID de policy\DisableExtensionList, redémarrer CertSvc et imposer le mapping
+    fort sur les DC.
+  mitre:
+    - {technique: T1649}
+  references:
+    - https://github.com/ly4k/Certipy/wiki
+
+- id: PKI-TEMPLATE-WEAK-KEY
+  category: pki
+  check: adcs_template_weak_key
+  params: {min_key_size: 2048}
+  severity: medium
+  points: 10
+  title: "Modèles publiés avec une clé trop courte"
+  description: "Des modèles publiés autorisent des clés RSA de moins de 2048 bits."
+  remediation: "Porter la taille minimale de clé à 2048 bits (3072 recommandé) et réémettre."
+  mitre: []
+
+- id: PKI-CA-WEAK-CRYPTO
+  category: pki
+  check: adcs_ca_weak_crypto
+  params: {min_key_size: 2048}
+  severity: high
+  points: 20
+  title: "Certificat de CA à cryptographie faible (SHA-1 ou RSA < 2048)"
+  description: "Le certificat de la CA utilise un algorithme de signature ou une taille de clé obsolète."
+  remediation: "Planifier un renouvellement de la CA avec une clé RSA 3072+ et SHA-256 minimum."
+  mitre: []
+
+- id: PKI-CA-CERT-EXPIRING
+  category: pki
+  check: adcs_ca_cert_expiring
+  params: {days: 180}
+  severity: medium
+  points: 10
+  title: "Certificat de CA expirant dans moins de 6 mois"
+  description: "L'expiration du certificat de CA interrompt l'émission et la validation des certificats."
+  remediation: "Renouveler le certificat de la CA et redistribuer la chaîne (NTAuth, GPO)."
+  mitre: []
+
+- id: PKI-LONG-VALIDITY
+  category: pki
+  check: adcs_long_validity_auth
+  params: {max_days: 730}
+  severity: low
+  points: 5
+  title: "Certificats d'authentification à durée de validité excessive"
+  description: >
+    Des modèles d'authentification émettent des certificats valides plus de 2 ans : un
+    certificat volé reste utilisable longtemps (persistance), même après changement de mot de passe.
+  remediation: "Réduire la validité (1 an maximum) et surveiller les certificats émis."
+  mitre:
+    - {technique: T1649}
+
+# ----------------------------------------------------------------------------- certificats publiés dans l'AD
+- id: PKI-CERT-OBSOLETE-HASH
+  category: pki
+  check: adcs_cert_weak
+  params: {what: obsolete_hash}
+  severity: high
+  points: 30
+  title: "Certificats de confiance signés en MD2/MD4/MD5/SHA-0"
+  description: "Ces algorithmes permettent de fabriquer un certificat de même signature (collision)."
+  remediation: "Retirer ces certificats des magasins AD (racines, intermédiaires, NTAuth) et réémettre."
+  mitre: [{technique: T1649, relation: related}]
+
+- id: PKI-CERT-SHA1
+  category: pki
+  check: adcs_cert_weak
+  params: {what: sha1}
+  severity: medium
+  points: 10
+  title: "Certificats de confiance signés en SHA-1"
+  description: "SHA-1 est obsolète et vulnérable aux collisions choisies."
+  remediation: "Renouveler la chaîne de certification en SHA-256 minimum."
+  mitre: []
+
+- id: PKI-CERT-RSA-LT-1024
+  category: pki
+  check: adcs_cert_weak
+  params: {what: rsa_lt_1024}
+  severity: critical
+  points: 40
+  title: "Certificats de confiance avec une clé RSA < 1024 bits"
+  description: "Une telle clé est factorisable : la clé privée peut être reconstituée."
+  remediation: "Retirer immédiatement ces certificats des magasins de confiance."
+  mitre: [{technique: T1649, relation: related}]
+
+- id: PKI-CERT-RSA-LT-2048
+  category: pki
+  check: adcs_cert_weak
+  params: {what: rsa_lt_2048}
+  severity: medium
+  points: 10
+  title: "Certificats de confiance avec une clé RSA entre 1024 et 2048 bits"
+  description: "Taille de clé insuffisante selon les recommandations actuelles."
+  remediation: "Planifier le renouvellement avec une clé RSA 3072+."
+  mitre: []
+
+- id: PKI-CERT-DSA
+  category: pki
+  check: adcs_cert_weak
+  params: {what: dsa}
+  severity: medium
+  points: 10
+  title: "Certificats de confiance utilisant DSA"
+  description: "DSA est obsolète et sensible à la qualité de l'aléa lors des signatures."
+  remediation: "Remplacer par RSA 3072+ ou ECDSA."
+  mitre: []
+
+- id: PKI-CERT-RSA-EXPONENT
+  category: pki
+  check: adcs_cert_weak
+  params: {what: rsa_exponent}
+  severity: medium
+  points: 10
+  title: "Certificats avec un exposant RSA faible"
+  description: "Un exposant public trop petit (ex. 3) expose à des attaques cryptographiques connues."
+  remediation: "Réémettre avec l'exposant standard 65537."
+  mitre: []
+
+- id: PKI-CERT-ROCA
+  category: pki
+  check: adcs_cert_weak
+  params: {what: roca}
+  severity: critical
+  points: 40
+  title: "Certificats vulnérables à ROCA"
+  description: "Clés générées par des puces Infineon vulnérables : la clé privée peut être retrouvée."
+  remediation: "Révoquer et régénérer les clés sur un matériel corrigé."
+  mitre: [{technique: T1649, relation: related}]

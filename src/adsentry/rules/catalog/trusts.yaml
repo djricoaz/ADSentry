@@ -1,0 +1,115 @@
+# Relations d'approbation — textes rédigés pour ADSentry.
+
+- id: T-SID-FILTERING
+  category: trusts
+  check: trust_sid_filtering_disabled
+  severity: high
+  points: 30
+  title: "Filtrage des SID désactivé sur une approbation entrante"
+  description: "Un administrateur du domaine approuvé peut injecter un SID privilégié (SID History) et devenir admin chez vous."
+  remediation: "netdom trust /quarantine:yes (externe) ou /EnableSIDHistory:no (forêt)."
+  mitre: [{technique: T1134.005}]
+
+- id: T-TGT-DELEGATION
+  category: trusts
+  check: trust_tgt_delegation
+  severity: high
+  points: 20
+  title: "Délégation de TGT autorisée à travers une approbation"
+  description: "Un serveur en délégation non contrainte de l'autre forêt peut capturer les TGT de vos admins."
+  remediation: "Désactiver EnableTGTDelegation sur l'approbation."
+  mitre: [{technique: T1558}]
+
+- id: T-INACTIVE
+  category: trusts
+  check: trust_inactive
+  params: {days: 45}
+  severity: low
+  points: 5
+  title: "Approbations inactives"
+  description: "Le mot de passe de l'approbation ne change plus : le domaine distant n'existe probablement plus."
+  remediation: "Supprimer les approbations inutilisées."
+  mitre: []
+
+- id: T-DOWNLEVEL
+  category: trusts
+  check: trust_downlevel
+  severity: medium
+  points: 15
+  title: "Approbation compatible NT4 (downlevel)"
+  description: "Les approbations NT4 reposent sur NTLM et des mécanismes obsolètes."
+  remediation: "Supprimer l'approbation ou migrer le domaine distant."
+  mitre: [{technique: T1557, relation: related}]
+
+- id: T-AES-DISABLED
+  category: trusts
+  check: trust_aes_disabled
+  severity: low
+  points: 5
+  title: "AES non activé sur une approbation"
+  description: "Les tickets inter-domaines utilisent RC4, plus faible."
+  remediation: "Activer AES sur l'approbation (ksetup /setenctypeattr ou console)."
+  mitre: [{technique: T1558, relation: related}]
+
+- id: T-SID-HISTORY-SAME-DOMAIN
+  category: trusts
+  check: trust_sid_history_same_domain
+  severity: critical
+  points: 50
+  title: "SID History contenant un SID du domaine lui-même"
+  description: "Technique de porte dérobée : un compte se voit attribuer en douce les droits d'un autre compte du domaine."
+  remediation: "Nettoyer sIDHistory et enquêter (accès nécessaires : Tier 0)."
+  mitre: [{technique: T1134.005}]
+
+- id: T-SID-HISTORY-UNKNOWN-DOMAIN
+  category: trusts
+  check: trust_sid_history_unknown_domain
+  severity: low
+  points: 5
+  title: "SID History provenant d'un domaine inconnu"
+  description: "Reliquat de migration depuis un domaine disparu."
+  remediation: "Nettoyer sIDHistory."
+  mitre: [{technique: T1134.005, relation: related}]
+
+- id: T-SID-HISTORY-DANGEROUS
+  category: trusts
+  check: trust_sid_history_dangerous
+  severity: critical
+  points: 50
+  title: "SID History contenant un SID privilégié"
+  description: "Un SID d'administrateur ou de groupe intégré dans le SID History confère ces privilèges."
+  remediation: "Supprimer immédiatement ces valeurs et enquêter."
+  mitre: [{technique: T1134.005}]
+
+- id: T-SCRIPT-OUT-OF-DOMAIN
+  category: trusts
+  check: trust_out_of_domain_path
+  params: {what: scripts}
+  severity: high
+  points: 20
+  title: "Scripts de connexion hébergés hors du domaine"
+  description: "Un administrateur d'un autre domaine peut modifier un script exécuté chez vous."
+  remediation: "Héberger les scripts dans SYSVOL/NETLOGON du domaine."
+  mitre: [{technique: T1037.003}]
+
+- id: T-FILE-DEPLOYED-OUT-OF-DOMAIN
+  category: trusts
+  check: trust_out_of_domain_path
+  params: {what: files}
+  severity: medium
+  points: 15
+  title: "Fichiers déployés par GPO depuis un autre domaine"
+  description: "La source d'un fichier déployé est contrôlée par un autre domaine."
+  remediation: "Rapatrier les sources dans un partage du domaine aux ACL maîtrisées."
+  mitre: [{technique: T1484.001}]
+
+- id: T-AZUREAD-SSO
+  category: trusts
+  check: trust_azuread_sso
+  params: {days: 40}
+  severity: medium
+  points: 15
+  title: "Clé Kerberos du SSO transparent Entra (AZUREADSSOACC) non renouvelée"
+  description: "Avec cette clé, un attaquant peut forger des tickets pour se connecter à Entra ID comme n'importe quel utilisateur synchronisé."
+  remediation: "Renouveler la clé (Update-AzureADSSOForest) tous les 30 jours ; envisager de désactiver le Seamless SSO."
+  mitre: [{technique: T1558.002}, {technique: T1556.007, relation: related}]

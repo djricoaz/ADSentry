@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADSentry</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" class="sprite" aria-hidden="true">
+  <symbol id="i-overview" viewBox="0 0 16 16"><path d="M2 2h5v5H2zM9 2h5v3H9zM9 7h5v7H9zM2 9h5v5H2z"/></symbol>
+  <symbol id="i-findings" viewBox="0 0 16 16"><path d="M5 3.5h9M5 8h9M5 12.5h9M2 3.5h.5M2 8h.5M2 12.5h.5"/></symbol>
+  <symbol id="i-pki" viewBox="0 0 16 16"><path d="M2.5 2.5h11v8h-11z"/><path d="M5 5.5h6M5 7.5h3.5"/><circle cx="11" cy="12" r="1.8"/><path d="M10 13.4V15l1-.6 1 .6v-1.6"/></symbol>
+  <symbol id="i-entra" viewBox="0 0 16 16"><path d="M4.5 12.5h7.2a2.8 2.8 0 0 0 .3-5.6A4 4 0 0 0 4.3 6 3.3 3.3 0 0 0 4.5 12.5z"/></symbol>
+  <symbol id="i-mitre" viewBox="0 0 16 16"><path d="M2 2h3v12H2zM6.5 2h3v8h-3zM11 2h3v5h-3z"/></symbol>
+  <symbol id="i-report" viewBox="0 0 16 16"><path d="M3.5 1.5h6l3 3v10h-9z"/><path d="M9.5 1.5v3h3M5.5 8h5M5.5 10.5h5M5.5 13h3"/></symbol>
+  <symbol id="i-history" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></symbol>
+  <symbol id="i-rules" viewBox="0 0 16 16"><path d="M3 2.5h7.5a2 2 0 0 1 2 2v9H5a2 2 0 0 1-2-2z"/><path d="M3 11.5a2 2 0 0 1 2-2h7.5"/></symbol>
+  <symbol id="i-kpi" viewBox="0 0 16 16"><path d="M2 13.5h12M3.5 11V8M6.5 11V5M9.5 11V7M12.5 11V3"/></symbol>
+  <symbol id="i-timeline" viewBox="0 0 16 16"><path d="M2 12.5l3.5-3 3 2 5.5-6"/><path d="M11 5.5h3v3"/></symbol>
+  <symbol id="i-compare" viewBox="0 0 16 16"><path d="M2.5 2.5h4.5v11H2.5zM9 2.5h4.5v11H9z"/><path d="M4 6h1.5M10.5 6H12M10.5 9H12"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 16 16"><path d="M2 4h12M2 8h12M2 12h12"/></symbol>
+  <symbol id="i-close" viewBox="0 0 16 16"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 16 16"><path d="M8 10.5V2.5M5 5.5l3-3 3 3M2.5 10.5v3h11v-3"/></symbol>
+  <symbol id="i-download" viewBox="0 0 16 16"><path d="M8 2.5v8M5 7.5l3 3 3-3M2.5 10.5v3h11v-3"/></symbol>
+</svg>
+
+<div class="shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1.5l7 3v5.2c0 4.3-3 7.4-7 8.8-4-1.4-7-4.5-7-8.8V4.5z"/><path d="M6.5 10l2.4 2.4L13.8 7.5"/></svg>
+      <span>ADSentry</span>
+    </div>
+
+    <div class="target" id="target-block">
+      <span class="target-label">Scan consulté</span>
+      <span class="target-name" id="side-target">Aucun scan</span>
+      <span class="target-date" id="side-date"></span>
+    </div>
+
+    <nav aria-label="Navigation principale">
+      <p class="nav-group">Pilotage</p>
+      <a href="#/dashboard" data-view="dashboard"><svg><use href="#i-kpi"/></svg>Tableau de bord</a>
+      <a href="#/maturity" data-view="maturity"><svg><use href="#i-timeline"/></svg>Évolution de la maturité</a>
+      <a href="#/compare" data-view="compare"><svg><use href="#i-compare"/></svg>Comparer des rapports</a>
+      <p class="nav-group">Résultats du scan</p>
+      <a href="#/overview" data-view="overview"><svg><use href="#i-overview"/></svg>Vue d'ensemble</a>
+      <a href="#/findings" data-view="findings"><svg><use href="#i-findings"/></svg>Constats<span class="count" id="nav-findings"></span></a>
+      <a href="#/pki" data-view="pki"><svg><use href="#i-pki"/></svg>Certificats (ADCS)</a>
+      <a href="#/entra" data-view="entra"><svg><use href="#i-entra"/></svg>Entra ID</a>
+      <a href="#/mitre" data-view="mitre"><svg><use href="#i-mitre"/></svg>MITRE ATT&amp;CK</a>
+      <a href="#/report" data-view="report"><svg><use href="#i-report"/></svg>Synthèse</a>
+      <p class="nav-group">Administration</p>
+      <a href="#/scans" data-view="scans"><svg><use href="#i-history"/></svg>Historique des scans</a>
+      <a href="#/rules" data-view="rules"><svg><use href="#i-rules"/></svg>Catalogue de règles</a>
+    </nav>
+
+    <div class="sidebar-foot" id="side-foot"></div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn menu-btn" id="menu-btn" aria-label="Ouvrir le menu"><svg><use href="#i-menu"/></svg></button>
+      <h1 id="page-title">Vue d'ensemble</h1>
+      <div class="topbar-actions">
+        <label class="field-inline" id="domain-field">
+          <span class="visually-hidden">Périmètre</span>
+          <select id="domain-select"></select>
+        </label>
+        <label class="field-inline" id="scan-field">
+          <span class="visually-hidden">Scan affiché</span>
+          <select id="scan-select"></select>
+        </label>
+        <label class="btn btn-secondary">
+          <svg><use href="#i-upload"/></svg><span>Importer un snapshot</span>
+          <input type="file" id="upload" accept=".json" hidden>
+        </label>
+      </div>
+    </header>
+
+    <main id="view" tabindex="-1"></main>
+  </div>
+</div>
+
+<aside class="drawer" id="drawer" aria-hidden="true" aria-labelledby="drawer-title">
+  <header class="drawer-head">
+    <div>
+      <span class="drawer-id" id="drawer-id"></span>
+      <h2 id="drawer-title"></h2>
+    </div>
+    <button class="icon-btn" id="drawer-close" aria-label="Fermer"><svg><use href="#i-close"/></svg></button>
+  </header>
+  <div class="drawer-body" id="drawer-body"></div>
+</aside>
+
+<div class="tooltip" id="tooltip"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="app.js"></script>
+</body>
+</html>

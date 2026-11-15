@@ -1,0 +1,549 @@
+# Comptes à privilèges — textes rédigés pour ADSentry.
+
+- id: P-ADMIN-KERBEROASTABLE
+  category: privileged_accounts
+  check: priv_admin_kerberoastable
+  severity: critical
+  points: 50
+  title: "Comptes privilégiés avec SPN (Kerberoasting)"
+  description: "Tout utilisateur peut demander un ticket chiffré avec le mot de passe de ces admins et le casser hors ligne."
+  remediation: "Retirer le SPN des comptes admins ou les convertir en gMSA ; mot de passe de 30+ caractères ; AES uniquement."
+  detection: "Événement 4769 avec chiffrement RC4 (0x17) pour ces comptes ; SPN leurre (honeypot)."
+  mitre: [{technique: T1558.003}]
+
+- id: P-ADMIN-NO-PREAUTH
+  category: privileged_accounts
+  check: priv_admin_no_preauth
+  severity: critical
+  points: 50
+  title: "Comptes privilégiés sans pré-authentification Kerberos"
+  description: "Un attaquant sans compte peut obtenir un message chiffré avec le mot de passe d'un admin (AS-REP Roasting)."
+  remediation: "Réactiver la pré-authentification Kerberos sur ces comptes."
+  detection: "Événement 4768 avec type de pré-authentification 0 pour ces comptes."
+  mitre: [{technique: T1558.004}]
+
+- id: P-DCSYNC-NON-DC
+  category: privileged_accounts
+  check: priv_dcsync_non_dc
+  severity: critical
+  points: 50
+  title: "Droits de réplication (DCSync) accordés à des comptes non-DC"
+  description: "Ces comptes peuvent extraire tous les hashs du domaine, dont celui de krbtgt."
+  remediation: "Retirer DS-Replication-Get-Changes(-All) à tout principal autre que DC / Enterprise DC / Administrators."
+  detection: "Événement 4662 avec les GUID de réplication depuis un compte qui n'est pas un DC."
+  mitre: [{technique: T1003.006}]
+
+- id: P-UNCONSTRAINED-DELEGATION
+  category: privileged_accounts
+  check: priv_unconstrained_delegation
+  severity: high
+  points: 30
+  title: "Délégation Kerberos non contrainte hors contrôleurs de domaine"
+  description: "Ces comptes reçoivent le TGT des utilisateurs qui s'y connectent ; combiné à une coercition d'un DC, le domaine tombe."
+  remediation: "Passer en délégation contrainte ou RBCD et protéger les admins (Protected Users / « sensible »)."
+  mitre: [{technique: T1558}, {technique: T1187, relation: related}]
+
+- id: P-ADMIN-DELEGATABLE
+  category: privileged_accounts
+  check: priv_admin_delegatable
+  severity: medium
+  points: 15
+  title: "Comptes privilégiés délégables"
+  description: "Des admins ne sont ni marqués « sensible et ne peut pas être délégué » ni membres de Protected Users."
+  remediation: "Cocher « Le compte est sensible et ne peut pas être délégué » pour tous les comptes Tier 0."
+  mitre: [{technique: T1550.003}]
+
+- id: P-ADMIN-NOT-PROTECTED-USERS
+  category: privileged_accounts
+  check: priv_admin_not_protected_users
+  severity: medium
+  points: 10
+  title: "Comptes privilégiés hors du groupe Protected Users"
+  description: "Protected Users interdit NTLM, RC4, la délégation et la mise en cache des identifiants pour ses membres."
+  remediation: "Ajouter les comptes d'administration (pas les comptes de service) à Protected Users après test."
+  mitre: [{technique: T1003.001, relation: related}, {technique: T1550.002}]
+
+- id: P-TOO-MANY-ADMINS
+  category: privileged_accounts
+  check: priv_too_many_admins
+  params: {max: 10}
+  severity: medium
+  points: 10
+  title: "Trop de comptes dans les groupes d'administration"
+  description: "Chaque compte Tier 0 supplémentaire agrandit la surface d'attaque."
+  remediation: "Réduire au strict nécessaire et déléguer finement les tâches courantes."
+  mitre: [{technique: T1078.002}]
+
+- id: P-ADMIN-LOGIN
+  category: privileged_accounts
+  check: priv_admin_login
+  params: {days: 35}
+  severity: low
+  points: 5
+  title: "Le compte Administrator natif est utilisé"
+  description: "Le compte -500 est partagé, non nominatif et ne peut pas être verrouillé : il doit rester un compte de secours."
+  remediation: "Utiliser des comptes d'administration nominatifs ; coffre-fort pour le compte natif."
+  mitre: [{technique: T1078.002}]
+
+- id: P-ADMIN-INACTIVE
+  category: privileged_accounts
+  check: priv_admin_inactive
+  params: {days: 180}
+  severity: medium
+  points: 15
+  title: "Comptes privilégiés inactifs"
+  description: "Comptes d'administration actifs mais inutilisés : leur compromission passerait inaperçue."
+  remediation: "Désactiver ou retirer les droits des comptes admins inutilisés."
+  mitre: [{technique: T1078.002}]
+
+- id: P-ADMIN-PWD-OLD
+  category: privileged_accounts
+  check: priv_admin_pwd_old
+  params: {days: 1095}
+  severity: medium
+  points: 10
+  title: "Mots de passe d'administrateurs inchangés depuis plus de 3 ans"
+  description: "Plus un mot de passe est ancien, plus il a de chances d'avoir fuité ou été réutilisé."
+  remediation: "Changer les mots de passe des comptes concernés et mettre en place une rotation."
+  mitre: [{technique: T1110}]
+
+- id: P-SERVICE-DOMAIN-ADMIN
+  category: privileged_accounts
+  check: priv_service_domain_admin
+  severity: high
+  points: 20
+  title: "Comptes privilégiés dont le mot de passe n'expire jamais"
+  description: "Souvent des comptes de service administrateurs du domaine au mot de passe figé et partagé."
+  remediation: "Retirer les droits d'admin du domaine aux comptes de service ; utiliser des gMSA et la délégation."
+  mitre: [{technique: T1078.002}]
+
+- id: P-ADMIN-EMAIL
+  category: privileged_accounts
+  check: priv_admin_email
+  severity: low
+  points: 5
+  title: "Comptes privilégiés avec messagerie"
+  description: "Un compte admin qui lit ses e-mails est exposé à l'hameçonnage."
+  remediation: "Séparer compte bureautique (avec messagerie) et compte d'administration (sans)."
+  mitre: [{technique: T1566}]
+
+- id: P-FAKE-PWD-CHANGE-ADMIN
+  category: privileged_accounts
+  check: priv_fake_pwd_change
+  params: {privileged_only: true}
+  severity: high
+  points: 20
+  title: "Faux changement de mot de passe sur des comptes privilégiés"
+  description: "pwdLastSet a été modifié sans que le mot de passe change réellement (contournement de l'expiration)."
+  remediation: "Forcer un vrai changement de mot de passe et restreindre l'écriture de pwdLastSet."
+  mitre: [{technique: T1098}]
+
+- id: P-SCHEMA-ADMINS
+  category: privileged_accounts
+  check: priv_schema_admins_not_empty
+  severity: low
+  points: 5
+  title: "Groupe Schema Admins non vide"
+  description: "Ce groupe ne devrait contenir personne en dehors des opérations de modification du schéma."
+  remediation: "Vider le groupe et n'y ajouter un compte que le temps d'une opération."
+  mitre: [{technique: T1078.002, relation: related}]
+
+- id: P-OPERATORS-NOT-EMPTY
+  category: privileged_accounts
+  check: priv_operators_not_empty
+  severity: medium
+  points: 15
+  title: "Groupes d'opérateurs non vides"
+  description: "Account/Server/Print/Backup Operators disposent de chemins connus vers l'administration du domaine."
+  remediation: "Vider ces groupes et utiliser une délégation fine."
+  mitre: [{technique: T1078.002}, {technique: T1003.003, relation: related}]
+
+- id: P-DNSADMINS-NOT-EMPTY
+  category: privileged_accounts
+  check: priv_dnsadmins_not_empty
+  severity: medium
+  points: 15
+  title: "Groupe DnsAdmins non vide"
+  description: "Les membres peuvent faire charger une DLL par le service DNS des DC (exécution en SYSTEM)."
+  remediation: "Traiter DnsAdmins comme Tier 0 et le vider ; administrer DNS avec des comptes Tier 0."
+  mitre: [{technique: T1574}]
+
+- id: P-KRBTGT-OLD
+  category: privileged_accounts
+  check: priv_krbtgt_old
+  params: {days: 180}
+  severity: high
+  points: 20
+  title: "Mot de passe krbtgt non renouvelé depuis plus de 6 mois"
+  description: "Un hash krbtgt volé dans le passé permet toujours de forger des Golden Tickets."
+  remediation: "Renouveler le mot de passe krbtgt deux fois (intervalle ≥ durée de vie maximale des tickets)."
+  detection: "Tickets 4769 sans 4768 préalable, durées de vie anormales (Golden Ticket)."
+  mitre: [{technique: T1558.001}]
+
+- id: P-RBCD-ON-DC
+  category: privileged_accounts
+  check: priv_rbcd_on_dc
+  severity: critical
+  points: 50
+  title: "Délégation basée sur les ressources (RBCD) configurée sur un DC"
+  description: "Un principal autorisé à agir pour le compte d'autrui sur un DC peut obtenir un ticket d'administrateur."
+  remediation: "Vider msDS-AllowedToActOnBehalfOfOtherIdentity sur les DC et enquêter sur l'origine."
+  mitre: [{technique: T1550.003}, {technique: T1098, relation: related}]
+
+- id: P-DC-CONSTRAINED-DELEGATION
+  category: privileged_accounts
+  check: priv_dc_constrained_delegation
+  params: {protocol_transition: false}
+  severity: high
+  points: 20
+  title: "Délégation contrainte configurée sur un DC"
+  description: "Configuration anormale qui élargit la surface d'attaque Kerberos du DC."
+  remediation: "Retirer msDS-AllowedToDelegateTo des comptes de DC."
+  mitre: [{technique: T1558}]
+
+- id: P-DC-PROTOCOL-TRANSITION
+  category: privileged_accounts
+  check: priv_dc_constrained_delegation
+  params: {protocol_transition: true}
+  severity: critical
+  points: 40
+  title: "Délégation contrainte avec transition de protocole sur un DC"
+  description: "Le compte du DC peut obtenir un ticket pour n'importe quel utilisateur vers les services autorisés."
+  remediation: "Retirer la délégation et l'option TRUSTED_TO_AUTH_FOR_DELEGATION des DC."
+  mitre: [{technique: T1558}, {technique: T1550.003, relation: related}]
+
+- id: P-DELEGATION-KRBTGT
+  category: privileged_accounts
+  check: priv_delegation_krbtgt
+  severity: critical
+  points: 50
+  title: "Délégation vers le service krbtgt"
+  description: "Déléguer vers krbtgt permet d'obtenir des TGT pour n'importe quel utilisateur (porte dérobée)."
+  remediation: "Supprimer toute entrée krbtgt/* de msDS-AllowedToDelegateTo et enquêter."
+  mitre: [{technique: T1558}]
+
+- id: P-UNKNOWN-DELEGATION
+  category: privileged_accounts
+  check: priv_unknown_delegation
+  severity: low
+  points: 5
+  title: "Délégation vers des services inexistants"
+  description: "Des cibles de délégation pointent vers des hôtes absents : un attaquant pourrait créer l'objet correspondant."
+  remediation: "Nettoyer les entrées obsolètes de msDS-AllowedToDelegateTo."
+  mitre: [{technique: T1558, relation: related}]
+
+- id: P-DELEGATION-EVERYONE
+  category: privileged_accounts
+  check: priv_delegation_everyone
+  severity: critical
+  points: 40
+  title: "Délégation de droits à des groupes très larges"
+  description: "Everyone, Authenticated Users ou Domain Users ont des droits d'écriture sur le domaine ou des OU."
+  remediation: "Supprimer ces ACE et déléguer à des groupes dédiés."
+  mitre: [{technique: T1098}]
+
+- id: P-DANGEROUS-EXTENDED-RIGHT
+  category: privileged_accounts
+  check: priv_dangerous_extended_right
+  severity: medium
+  points: 15
+  title: "Droits étendus dangereux délégués sur des OU"
+  description: "All Extended Rights ou réinitialisation de mot de passe délégués largement : prise de contrôle de comptes."
+  remediation: "Limiter les droits étendus aux opérations nécessaires et aux seules OU concernées."
+  mitre: [{technique: T1098}]
+
+- id: P-CONTROL-PATH-EVERYONE
+  category: privileged_accounts
+  check: priv_control_path
+  params: {mode: everyone}
+  severity: critical
+  points: 50
+  title: "Chemin de contrôle de « tout le monde » vers les administrateurs"
+  description: "Par une chaîne d'ACL et d'appartenances, un groupe très large peut prendre le contrôle d'un objet Tier 0."
+  remediation: "Casser le premier maillon de chaque chemin (ACE ou appartenance) ; analyser avec un graphe."
+  mitre: [{technique: T1098}, {technique: T1484, relation: related}]
+
+- id: P-CONTROL-PATH-MANY
+  category: privileged_accounts
+  check: priv_control_path
+  params: {mode: many, max: 50}
+  severity: medium
+  points: 15
+  title: "Nombreux comptes non admins avec un chemin vers les administrateurs"
+  description: "Beaucoup de comptes peuvent indirectement contrôler un objet Tier 0 : le Tier 0 réel est plus large que prévu."
+  remediation: "Revoir les délégations sur les objets Tier 0 et leurs conteneurs."
+  mitre: [{technique: T1098}]
+
+- id: P-EXCHANGE-PRIVESC
+  category: privileged_accounts
+  check: priv_exchange_privesc
+  params: {target_type: domain}
+  severity: critical
+  points: 50
+  title: "Exchange peut modifier les permissions du domaine"
+  description: "Les groupes Exchange disposent de WriteDacl sur le domaine : un serveur Exchange compromis mène au DCSync."
+  remediation: "Appliquer le mode de permissions réduit (Exchange Split Permissions / correctifs de 2019) ."
+  mitre: [{technique: T1098}]
+
+- id: P-EXCHANGE-ADMINSDHOLDER
+  category: privileged_accounts
+  check: priv_exchange_privesc
+  params: {target_type: adminsdholder}
+  severity: critical
+  points: 50
+  title: "Exchange peut modifier AdminSDHolder"
+  description: "Les droits Exchange sur AdminSDHolder se propagent à tous les comptes protégés."
+  remediation: "Retirer les ACE Exchange de CN=AdminSDHolder."
+  mitre: [{technique: T1098}]
+
+- id: P-ADMINSDHOLDER-BACKDOOR
+  category: privileged_accounts
+  check: priv_adminsdholder_backdoor
+  severity: critical
+  points: 50
+  title: "ACL anormale sur AdminSDHolder (porte dérobée)"
+  description: "Un principal non Tier 0 peut modifier AdminSDHolder : ses droits seront recopiés sur tous les admins."
+  remediation: "Restaurer l'ACL par défaut d'AdminSDHolder et enquêter sur la modification."
+  detection: "Événement 5136 sur CN=AdminSDHolder,CN=System."
+  mitre: [{technique: T1098}]
+
+- id: P-KEY-ADMINS-DELEGATION
+  category: privileged_accounts
+  check: priv_key_admins_delegation
+  severity: critical
+  points: 40
+  title: "Key Admins disposent d'un contrôle total sur le domaine"
+  description: "Erreur connue d'adprep 2016 : Key Admins obtient des droits excessifs sur l'objet domaine."
+  remediation: "Restreindre l'ACE à l'attribut msDS-KeyCredentialLink comme prévu par Microsoft."
+  mitre: [{technique: T1098}]
+
+- id: P-DC-OWNER
+  category: privileged_accounts
+  check: priv_dc_owner
+  severity: high
+  points: 20
+  title: "Contrôleurs de domaine appartenant à un compte non administrateur"
+  description: "Le propriétaire d'un objet DC peut modifier ses permissions et en prendre le contrôle."
+  remediation: "Redonner la propriété des objets DC à Domain Admins."
+  mitre: [{technique: T1098}]
+
+- id: P-BAD-SUCCESSOR
+  category: privileged_accounts
+  check: priv_bad_successor
+  severity: critical
+  points: 50
+  title: "Création de dMSA possible par des non-admins avec un DC 2025 (BadSuccessor)"
+  description: "Créer un compte de service managé délégué (dMSA) permet d'hériter des privilèges de n'importe quel compte."
+  remediation: "Retirer CreateChild sur les OU aux principaux non Tier 0 ; appliquer les correctifs Microsoft."
+  mitre: [{technique: T1098}, {technique: T1078.002, relation: related}]
+
+- id: P-DNS-DELEGATION
+  category: privileged_accounts
+  check: priv_dns_delegation
+  severity: high
+  points: 20
+  title: "Délégation explicite sur les objets serveur DNS"
+  description: "Ces droits permettent de configurer le service DNS des DC (chargement de DLL)."
+  remediation: "Supprimer les délégations explicites sur MicrosoftDNS et les objets serveur DNS."
+  mitre: [{technique: T1574}]
+
+- id: P-DSHEURISTICS-ADMINSDEXMASK
+  category: privileged_accounts
+  check: priv_dsheuristics_adminsdexmask
+  severity: medium
+  points: 15
+  title: "Groupes d'opérateurs exclus de la protection AdminSDHolder"
+  description: "dwAdminSDExMask retire la protection SDProp de groupes sensibles."
+  remediation: "Remettre ce caractère de dSHeuristics à 0."
+  mitre: [{technique: T1098}]
+
+- id: P-DSHEURISTICS-DOLISTOBJECT
+  category: privileged_accounts
+  check: priv_dsheuristics_dolistobject
+  severity: info
+  points: 0
+  title: "Mode List Object activé"
+  description: "Comportement de sécurité rarement utilisé qui complique l'analyse des permissions."
+  remediation: "Vérifier qu'il est volontaire et documenté."
+  mitre: []
+
+- id: P-RECOVERY-MODE-UNPROTECTED
+  category: privileged_accounts
+  check: priv_gpo_recovery_mode
+  severity: high
+  points: 20
+  source: gpo
+  title: "Ouverture de session administrative automatique en mode récupération"
+  description: "Accès administrateur sans mot de passe via la console de récupération."
+  remediation: "Désactiver « Console de récupération : autoriser l'ouverture de session d'administration automatique »."
+  mitre: [{technique: T1078.003}]
+
+- id: P-PRIVILEGE-EVERYONE
+  category: privileged_accounts
+  check: priv_gpo_privilege_everyone
+  severity: critical
+  points: 40
+  source: gpo
+  title: "Privilèges dangereux accordés à tout le monde par GPO"
+  description: "SeDebug, SeBackup, SeImpersonate… attribués à un groupe large permettent de devenir SYSTEM."
+  remediation: "Retirer ces privilèges aux groupes larges dans les GPO concernées."
+  mitre: [{technique: T1134}]
+
+- id: P-LOGIN-DC-EVERYONE
+  category: privileged_accounts
+  check: priv_gpo_login_dc_everyone
+  severity: critical
+  points: 40
+  source: gpo
+  title: "Tout le monde peut ouvrir une session sur les DC"
+  description: "Le droit d'ouverture de session locale/RDP sur les DC est accordé à un groupe large."
+  remediation: "Restreindre ces droits aux administrateurs Tier 0."
+  mitre: [{technique: T1078.002}]
+
+- id: P-TRUSTED-CREDMAN
+  category: privileged_accounts
+  check: priv_gpo_trusted_credman
+  severity: high
+  points: 20
+  source: gpo
+  title: "Privilège « Accéder au Gestionnaire d'informations d'identification » accordé"
+  description: "Ce privilège permet de lire les identifiants sauvegardés des utilisateurs."
+  remediation: "Ne l'accorder à personne."
+  mitre: [{technique: T1555.004}]
+
+- id: P-LOGON-DENIED
+  category: privileged_accounts
+  check: priv_gpo_logon_denied
+  severity: medium
+  points: 15
+  source: gpo
+  title: "Aucune restriction de connexion des admins aux systèmes de moindre confiance"
+  description: "Sans modèle de tiering, un admin du domaine qui se connecte à un poste y laisse des identifiants réutilisables."
+  remediation: "GPO postes/serveurs : refuser l'ouverture de session (locale, RDP, réseau) aux groupes Tier 0."
+  mitre: [{technique: T1078.002}, {technique: T1003.001, relation: related}]
+
+- id: P-DELEGATION-GPO-DATA
+  category: privileged_accounts
+  check: priv_gpo_writable
+  params: {what: gpo}
+  severity: critical
+  points: 40
+  source: gpo
+  title: "GPO modifiables par des groupes larges"
+  description: "Modifier une GPO, c'est exécuter du code sur toutes les machines où elle s'applique."
+  remediation: "Restreindre l'édition des GPO aux administrateurs du tier correspondant."
+  mitre: [{technique: T1484.001}]
+
+- id: P-DELEGATION-LOGIN-SCRIPT
+  category: privileged_accounts
+  check: priv_gpo_writable
+  params: {what: scripts}
+  severity: critical
+  points: 40
+  source: gpo
+  title: "Scripts de connexion modifiables par des groupes larges"
+  description: "Un script modifiable est exécuté par chaque utilisateur ou machine concernés."
+  remediation: "Corriger les ACL NTFS/partage des scripts et les héberger dans SYSVOL/NETLOGON."
+  mitre: [{technique: T1037.003}]
+
+- id: P-DELEGATION-FILE-DEPLOYED
+  category: privileged_accounts
+  check: priv_gpo_writable
+  params: {what: files}
+  severity: high
+  points: 30
+  source: gpo
+  title: "Fichiers déployés par GPO modifiables par des groupes larges"
+  description: "Un fichier déployé modifiable permet de propager un binaire malveillant."
+  remediation: "Restreindre l'écriture sur les sources des fichiers déployés."
+  mitre: [{technique: T1484.001}]
+
+- id: P-DISPLAY-SPECIFIER
+  category: privileged_accounts
+  check: priv_display_specifier
+  severity: medium
+  points: 15
+  title: "Actions de menu contextuel AD pointant hors de SYSVOL"
+  description: "Les display specifiers personnalisés lancent un programme dans la session de l'administrateur."
+  remediation: "Supprimer ces actions ou héberger les scripts dans SYSVOL avec des ACL Tier 0."
+  mitre: [{technique: T1204, relation: related}]
+
+- id: P-UNPROTECTED-OU
+  category: privileged_accounts
+  check: priv_unprotected_ou
+  severity: low
+  points: 5
+  title: "OU non protégées contre la suppression accidentelle"
+  description: "Une suppression accidentelle ou malveillante emporte tous les objets contenus."
+  remediation: "Activer « Protéger l'objet des suppressions accidentelles » sur les OU."
+  mitre: [{technique: T1485, relation: related}]
+
+- id: P-RODC-ALLOWED-GROUP
+  category: privileged_accounts
+  check: priv_rodc_allowed_group
+  severity: medium
+  points: 10
+  title: "Groupe « Allowed RODC Password Replication » non vide"
+  description: "Les membres voient leur mot de passe mis en cache sur tous les RODC."
+  remediation: "Vider ce groupe et gérer la mise en cache par RODC."
+  mitre: [{technique: T1003, relation: related}]
+
+- id: P-RODC-DENIED-GROUP
+  category: privileged_accounts
+  check: priv_rodc_denied_group
+  severity: high
+  points: 20
+  title: "Membres par défaut retirés du groupe « Denied RODC Password Replication »"
+  description: "Des comptes sensibles peuvent voir leur mot de passe mis en cache sur un RODC."
+  remediation: "Réintégrer les membres par défaut (DA, EA, DC, Schema Admins, Cert Publishers, krbtgt…)."
+  mitre: [{technique: T1003}]
+
+- id: P-RODC-REVEAL-ON-DEMAND
+  category: privileged_accounts
+  check: priv_rodc_reveal_on_demand
+  severity: critical
+  points: 40
+  title: "Un groupe privilégié peut être mis en cache sur un RODC"
+  description: "La compromission du RODC exposerait les mots de passe d'administrateurs."
+  remediation: "Retirer les groupes Tier 0 de msDS-RevealOnDemandGroup."
+  mitre: [{technique: T1003}]
+
+- id: P-RODC-NEVER-REVEAL
+  category: privileged_accounts
+  check: priv_rodc_never_reveal
+  severity: high
+  points: 20
+  title: "Protection « Never Reveal » incomplète sur un RODC"
+  description: "Le groupe Denied RODC Password Replication n'est pas dans msDS-NeverRevealGroup."
+  remediation: "Ajouter le groupe Denied à msDS-NeverRevealGroup de chaque RODC."
+  mitre: [{technique: T1003}]
+
+- id: P-RODC-ADMIN-REVEALED
+  category: privileged_accounts
+  check: priv_rodc_admin_revealed
+  severity: critical
+  points: 40
+  title: "Mots de passe d'administrateurs déjà mis en cache sur un RODC"
+  description: "Ces secrets sont exposés à quiconque compromet le RODC."
+  remediation: "Changer les mots de passe concernés et corriger la politique de réplication."
+  mitre: [{technique: T1003}]
+
+- id: P-RODC-SYSVOL-WRITE
+  category: privileged_accounts
+  check: priv_rodc_sysvol_write
+  severity: high
+  points: 20
+  title: "RODC avec droit d'écriture sur SYSVOL"
+  description: "Un RODC compromis pourrait modifier les GPO de tout le domaine."
+  remediation: "Retirer le droit d'écriture des RODC sur SYSVOL."
+  mitre: [{technique: T1484.001}]
+
+- id: P-RODC-KRBTGT-ORPHAN
+  category: privileged_accounts
+  check: priv_rodc_krbtgt_orphan
+  severity: low
+  points: 5
+  title: "Comptes krbtgt de RODC orphelins"
+  description: "Comptes krbtgt_NNNN dont le RODC n'existe plus."
+  remediation: "Supprimer les comptes krbtgt_NNNN orphelins."
+  mitre: [{technique: T1558.001, relation: related}]

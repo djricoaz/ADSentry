@@ -1,0 +1,343 @@
+# Entra ID — collecte Microsoft Graph en lecture seule. Textes rédigés pour ADSentry.
+
+- id: E-GLOBAL-ADMINS-COUNT
+  category: entra_id
+  check: entra_global_admins_count
+  params: {min: 2, max: 5}
+  severity: medium
+  points: 15
+  source: graph
+  title: "Nombre d'administrateurs généraux hors de la plage recommandée (2 à 5)"
+  description: "Trop d'administrateurs généraux élargissent la surface d'attaque ; un seul crée un risque de blocage."
+  remediation: "Réduire à 2-5 comptes (dont 2 comptes d'urgence) et utiliser des rôles moins privilégiés."
+  mitre: [{technique: T1078.004}]
+
+- id: E-ADMIN-NO-MFA
+  category: entra_id
+  check: entra_admin_no_mfa
+  severity: critical
+  points: 50
+  source: graph
+  title: "Administrateurs sans méthode MFA enregistrée"
+  description: "Un mot de passe deviné ou hameçonné suffit à prendre le contrôle du tenant."
+  remediation: "Imposer l'enregistrement MFA résistante à l'hameçonnage (FIDO2, Windows Hello) aux rôles privilégiés."
+  mitre: [{technique: T1078.004}, {technique: T1110.003, relation: related}]
+
+- id: E-USERS-NO-MFA
+  category: entra_id
+  check: entra_users_no_mfa
+  params: {max_percent: 5}
+  severity: high
+  points: 20
+  source: graph
+  title: "Part importante d'utilisateurs sans MFA enregistrée"
+  description: "Ces comptes sont exposés à la pulvérisation de mots de passe et au bourrage d'identifiants."
+  remediation: "Campagne d'enregistrement MFA et accès conditionnel exigeant la MFA."
+  mitre: [{technique: T1110.003}]
+
+- id: E-NO-CA-POLICIES
+  category: entra_id
+  check: entra_ca
+  params: {what: no_policies}
+  severity: critical
+  points: 40
+  source: graph
+  title: "Ni valeurs de sécurité par défaut ni accès conditionnel"
+  description: "Aucun mécanisme n'impose la MFA ni ne bloque l'authentification héritée."
+  remediation: "Activer les valeurs de sécurité par défaut ou déployer des stratégies d'accès conditionnel."
+  mitre: [{technique: T1078.004}]
+
+- id: E-CA-NO-MFA-ADMINS
+  category: entra_id
+  check: entra_ca
+  params: {what: mfa_admins}
+  severity: critical
+  points: 40
+  source: graph
+  title: "Pas de stratégie d'accès conditionnel exigeant la MFA pour les administrateurs"
+  description: "Les rôles privilégiés peuvent se connecter avec un simple mot de passe."
+  remediation: "Stratégie CA : rôles d'administration → exiger une force d'authentification résistante à l'hameçonnage."
+  mitre: [{technique: T1078.004}]
+
+- id: E-CA-NO-MFA-ALL
+  category: entra_id
+  check: entra_ca
+  params: {what: mfa_all}
+  severity: high
+  points: 20
+  source: graph
+  title: "Pas de stratégie d'accès conditionnel exigeant la MFA pour tous"
+  description: "Les utilisateurs standard ne sont pas protégés par la MFA."
+  remediation: "Stratégie CA : tous les utilisateurs (hors comptes d'urgence) → exiger la MFA."
+  mitre: [{technique: T1110.003}]
+
+- id: E-LEGACY-AUTH
+  category: entra_id
+  check: entra_ca
+  params: {what: legacy_auth}
+  severity: high
+  points: 30
+  source: graph
+  title: "Authentification héritée non bloquée"
+  description: "IMAP, POP, SMTP AUTH ou ActiveSync contournent la MFA : cible privilégiée de la pulvérisation."
+  remediation: "Stratégie CA bloquant les clients « Exchange ActiveSync » et « Autres clients » pour tous les utilisateurs."
+  mitre: [{technique: T1110.003}]
+
+- id: E-CA-REPORT-ONLY
+  category: entra_id
+  check: entra_ca
+  params: {what: report_only}
+  severity: low
+  points: 5
+  source: graph
+  title: "Stratégies d'accès conditionnel restées en mode rapport"
+  description: "Ces stratégies ne protègent rien tant qu'elles ne sont pas activées."
+  remediation: "Analyser les journaux en mode rapport puis activer les stratégies."
+  mitre: [{technique: T1078.004, relation: related}]
+
+- id: E-USER-CONSENT
+  category: entra_id
+  check: entra_setting
+  params: {field: users_can_consent, bad: true}
+  severity: high
+  points: 20
+  source: graph
+  title: "Les utilisateurs peuvent consentir à des applications tierces"
+  description: "Vecteur d'hameçonnage par consentement : une application malveillante obtient l'accès aux données."
+  remediation: "Restreindre le consentement aux éditeurs vérifiés et à faible risque, avec workflow d'approbation admin."
+  mitre: [{technique: T1528}]
+
+- id: E-USERS-REGISTER-APPS
+  category: entra_id
+  check: entra_setting
+  params: {field: users_can_register_apps, bad: true}
+  severity: medium
+  points: 10
+  source: graph
+  title: "Les utilisateurs peuvent enregistrer des applications"
+  description: "Permet de créer des identités applicatives non gouvernées, utiles à la persistance."
+  remediation: "Désactiver l'enregistrement d'applications par les utilisateurs ; déléguer à un rôle dédié."
+  mitre: [{technique: T1098.001, relation: related}]
+
+- id: E-USERS-CREATE-TENANTS
+  category: entra_id
+  check: entra_setting
+  params: {field: users_can_create_tenants, bad: true}
+  severity: low
+  points: 5
+  source: graph
+  title: "Les utilisateurs peuvent créer des tenants"
+  description: "Création de tenants hors gouvernance (shadow IT, exfiltration)."
+  remediation: "Désactiver « Les utilisateurs peuvent créer des tenants Microsoft Entra »."
+  mitre: []
+
+- id: E-GUEST-SAME-AS-MEMBER
+  category: entra_id
+  check: entra_setting
+  params: {field: guest_role, bad: same_as_member}
+  severity: high
+  points: 20
+  source: graph
+  title: "Les invités ont les mêmes droits que les membres"
+  description: "Un invité peut énumérer tout l'annuaire (utilisateurs, groupes, applications)."
+  remediation: "Niveau d'accès invité : « restreint aux propriétés et appartenances de leurs propres objets »."
+  mitre: [{technique: T1087.004}]
+
+- id: E-GUEST-NOT-RESTRICTED
+  category: entra_id
+  check: entra_setting
+  params: {field: guest_role, bad: limited}
+  severity: low
+  points: 5
+  source: graph
+  title: "Accès des invités non restreint au niveau le plus strict"
+  description: "Les invités peuvent encore lire des informations sur d'autres objets de l'annuaire."
+  remediation: "Passer au niveau d'accès invité le plus restreint."
+  mitre: [{technique: T1087.004, relation: related}]
+
+- id: E-GUEST-INVITE-EVERYONE
+  category: entra_id
+  check: entra_setting
+  params: {field: guest_invite_from, bad: everyone}
+  severity: medium
+  points: 10
+  source: graph
+  title: "Tout le monde, y compris les invités, peut inviter des invités"
+  description: "Aucun contrôle sur les identités externes qui entrent dans le tenant."
+  remediation: "Limiter les invitations aux membres ou à un rôle « Inviteur d'invités »."
+  mitre: [{technique: T1078.004, relation: related}]
+
+- id: E-SYNCED-PRIVILEGED
+  category: entra_id
+  check: entra_synced_privileged
+  severity: critical
+  points: 40
+  source: graph
+  title: "Comptes synchronisés depuis l'AD dans des rôles privilégiés Entra"
+  description: "La compromission de l'AD local donne le contrôle du cloud : pas de séparation entre les deux mondes."
+  remediation: "Utiliser des comptes cloud uniquement (cloud-only) pour les rôles d'administration Entra."
+  mitre: [{technique: T1556.007}, {technique: T1078.004, relation: related}]
+
+- id: E-PERMANENT-PRIVILEGED
+  category: entra_id
+  check: entra_permanent_privileged
+  params: {max: 2}
+  severity: medium
+  points: 15
+  source: graph
+  title: "Attributions permanentes de rôles privilégiés (pas de PIM)"
+  description: "Les privilèges sont actifs en permanence au lieu d'être activés à la demande et pour une durée limitée."
+  remediation: "Convertir en attributions éligibles via Privileged Identity Management (sauf comptes d'urgence)."
+  mitre: [{technique: T1098.003}]
+
+- id: E-PRIVILEGED-GUESTS
+  category: entra_id
+  check: entra_privileged_guests
+  severity: critical
+  points: 40
+  source: graph
+  title: "Invités dans des rôles privilégiés"
+  description: "Un compte géré par une autre organisation détient des droits d'administration sur le tenant."
+  remediation: "Retirer ces rôles ou créer des comptes internes contrôlés."
+  mitre: [{technique: T1078.004}]
+
+- id: E-STALE-USERS
+  category: entra_id
+  check: entra_stale_users
+  params: {user_type: Member, days: 90}
+  severity: low
+  points: 5
+  source: graph
+  title: "Comptes membres sans connexion depuis 90 jours"
+  description: "Comptes dormants exploitables discrètement."
+  remediation: "Revues d'accès et désactivation automatique des comptes inactifs."
+  mitre: [{technique: T1078.004}]
+
+- id: E-STALE-GUESTS
+  category: entra_id
+  check: entra_stale_users
+  params: {user_type: Guest, days: 90}
+  severity: medium
+  points: 10
+  source: graph
+  title: "Invités sans connexion depuis 90 jours"
+  description: "Accès externes oubliés, rarement surveillés."
+  remediation: "Revues d'accès des invités avec suppression automatique."
+  mitre: [{technique: T1078.004}]
+
+- id: E-RISKY-USERS
+  category: entra_id
+  check: entra_risky_users
+  severity: high
+  points: 20
+  source: graph
+  title: "Utilisateurs à risque élevé non traités (Identity Protection)"
+  description: "Microsoft a détecté une compromission probable de ces comptes et rien n'a été fait."
+  remediation: "Réinitialiser les mots de passe, révoquer les sessions, enquêter ; stratégie de risque utilisateur."
+  mitre: [{technique: T1078.004}]
+
+- id: E-APP-CRITICAL-PERMISSIONS
+  category: entra_id
+  check: entra_app_dangerous_permissions
+  params: {level: critical}
+  severity: critical
+  points: 50
+  source: graph
+  title: "Applications avec des permissions Graph permettant de devenir administrateur général"
+  description: "RoleManagement.ReadWrite.Directory, AppRoleAssignment.ReadWrite.All… : l'application équivaut à un GA."
+  remediation: "Retirer ces permissions ou les remplacer par des permissions limitées ; protéger les secrets de l'app."
+  mitre: [{technique: T1098.003}, {technique: T1528, relation: related}]
+
+- id: E-APP-HIGH-PERMISSIONS
+  category: entra_id
+  check: entra_app_dangerous_permissions
+  params: {level: high}
+  severity: high
+  points: 20
+  source: graph
+  title: "Applications avec un accès large aux données (messagerie, fichiers, utilisateurs)"
+  description: "Mail.ReadWrite, Files.ReadWrite.All… sur tout le tenant : fuite massive en cas de compromission."
+  remediation: "Restreindre la portée (RBAC Exchange pour les applications, Sites.Selected) ou retirer la permission."
+  mitre: [{technique: T1528}]
+
+- id: E-APP-PRIVILEGED-ROLE
+  category: entra_id
+  check: entra_app_privileged_role
+  severity: critical
+  points: 40
+  source: graph
+  title: "Principaux de service titulaires de rôles d'administration"
+  description: "Une identité applicative détient un rôle privilégié : ses secrets deviennent des clés Tier 0."
+  remediation: "Retirer le rôle ou le limiter (unités administratives), protéger les identifiants (certificat, identité managée)."
+  mitre: [{technique: T1098.003}]
+
+- id: E-APP-OWNER-NON-ADMIN
+  category: entra_id
+  check: entra_app_owner_non_admin
+  severity: critical
+  points: 40
+  source: graph
+  title: "Applications sensibles possédées par des non-administrateurs"
+  description: "Le propriétaire peut ajouter un secret à l'application et utiliser ses permissions : élévation de privilèges."
+  remediation: "Retirer les propriétaires non administrateurs des applications à permissions sensibles."
+  mitre: [{technique: T1098.001}]
+
+- id: E-APP-LONG-LIVED-SECRETS
+  category: entra_id
+  check: entra_app_credentials
+  params: {what: long_lived, max_days: 730}
+  severity: medium
+  points: 10
+  source: graph
+  title: "Secrets d'application valables plus de 2 ans"
+  description: "Un secret volé reste utilisable très longtemps."
+  remediation: "Préférer les certificats ou identités managées ; secrets de 6 mois maximum."
+  mitre: [{technique: T1098.001, relation: related}]
+
+- id: E-APP-EXPIRED-CREDENTIALS
+  category: entra_id
+  check: entra_app_credentials
+  params: {what: expired}
+  severity: info
+  points: 0
+  source: graph
+  title: "Identifiants d'application expirés"
+  description: "Hygiène : identifiants inutiles à supprimer."
+  remediation: "Supprimer les identifiants expirés."
+  mitre: []
+
+- id: E-SP-PASSWORD-CREDENTIALS
+  category: entra_id
+  check: entra_app_credentials
+  params: {what: sp_password}
+  severity: high
+  points: 20
+  source: graph
+  title: "Secrets ajoutés directement sur des principaux de service"
+  description: "Technique de persistance : les secrets ajoutés au principal de service n'apparaissent pas sur l'application."
+  remediation: "Supprimer ces secrets et enquêter sur leur origine (journaux d'audit)."
+  detection: "Journal d'audit Entra : « Add service principal credentials »."
+  mitre: [{technique: T1098.001}]
+
+- id: E-FEDERATED-DOMAINS
+  category: entra_id
+  check: entra_federated_domains
+  severity: medium
+  points: 10
+  source: graph
+  title: "Domaines fédérés (ADFS ou fournisseur tiers)"
+  description: "Le serveur de fédération devient Tier 0 : sa clé de signature permet de forger des jetons (Golden SAML)."
+  remediation: "Migrer vers l'authentification cloud (PHS/PTA) ou protéger le serveur de fédération comme un DC."
+  mitre: [{technique: T1606.002}, {technique: T1484.002, relation: related}]
+
+- id: E-CONNECT-VERSION
+  category: entra_id
+  check: entra_connect_version
+  params: {min: [2, 4, 0]}
+  severity: high
+  points: 20
+  source: graph
+  title: "Version d'Entra Connect obsolète ou vulnérable"
+  description: "Les anciennes versions (dont la branche 1.x, hors support) contiennent des vulnérabilités connues."
+  remediation: "Mettre à jour Entra Connect vers la dernière version et traiter son serveur comme Tier 0."
+  mitre: [{technique: T1556.007}]

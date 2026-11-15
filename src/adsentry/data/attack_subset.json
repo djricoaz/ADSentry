@@ -1,0 +1,436 @@
+{
+ "version": "20.1",
+ "tactics": [
+  {
+   "id": "reconnaissance",
+   "name": "Reconnaissance"
+  },
+  {
+   "id": "resource-development",
+   "name": "Resource Development"
+  },
+  {
+   "id": "initial-access",
+   "name": "Initial Access"
+  },
+  {
+   "id": "execution",
+   "name": "Execution"
+  },
+  {
+   "id": "persistence",
+   "name": "Persistence"
+  },
+  {
+   "id": "privilege-escalation",
+   "name": "Privilege Escalation"
+  },
+  {
+   "id": "stealth",
+   "name": "Stealth"
+  },
+  {
+   "id": "defense-impairment",
+   "name": "Defense Impairment"
+  },
+  {
+   "id": "credential-access",
+   "name": "Credential Access"
+  },
+  {
+   "id": "discovery",
+   "name": "Discovery"
+  },
+  {
+   "id": "lateral-movement",
+   "name": "Lateral Movement"
+  },
+  {
+   "id": "collection",
+   "name": "Collection"
+  },
+  {
+   "id": "command-and-control",
+   "name": "Command and Control"
+  },
+  {
+   "id": "exfiltration",
+   "name": "Exfiltration"
+  },
+  {
+   "id": "impact",
+   "name": "Impact"
+  }
+ ],
+ "techniques": {
+  "T1003": {
+   "name": "OS Credential Dumping",
+   "tactics": [
+    "credential-access"
+   ]
+  },
+  "T1003.001": {
+   "name": "LSASS Memory",
+   "tactics": [
+    "credential-access"
+   ]
+  },
+  "T1003.003": {
+   "name": "NTDS",
+   "tactics": [
+    "credential-access"
+   ]
+  },
+  "T1003.006": {
+   "name": "DCSync",
+   "tactics": [
+    "credential-access"
+   ]
+  },
+  "T1021.001": {
+   "name": "Remote Desktop Protocol",
+   "tactics": [
+    "lateral-movement"
+   ]
+  },
+  "T1036": {
+   "name": "Masquerading",
+   "tactics": [
+    "stealth"
+   ]
+  },
+  "T1037.003": {
+   "name": "Network Logon Script",
+   "tactics": [
+    "persistence",
+    "privilege-escalation"
+   ]
+  },
+  "T1049": {
+   "name": "System Network Connections Discovery",
+   "tactics": [
+    "discovery"
+   ]
+  },
+  "T1059.001": {
+   "name": "PowerShell",
+   "tactics": [
+    "execution"
+   ]
+  },
+  "T1059.005": {
+   "name": "Visual Basic",
+   "tactics": [
+    "execution"
+   ]
+  },
+  "T1059.007": {
+   "name": "JavaScript",
+   "tactics": [
+    "execution"
+   ]
+  },
+  "T1068": {
+   "name": "Exploitation for Privilege Escalation",
+   "tactics": [
+    "privilege-escalation"
+   ]
+  },
+  "T1072": {
+   "name": "Software Deployment Tools",
+   "tactics": [
+    "execution",
+    "lateral-movement"
+   ]
+  },
+  "T1078.001": {
+   "name": "Default Accounts",
+   "tactics": [
+    "stealth",
+    "persistence",
+    "privilege-escalation",
+    "initial-access"
+   ]
+  },
+  "T1078.002": {
+   "name": "Domain Accounts",
+   "tactics": [
+    "stealth",
+    "persistence",
+    "privilege-escalation",
+    "initial-access"
+   ]
+  },
+  "T1078.003": {
+   "name": "Local Accounts",
+   "tactics": [
+    "stealth",
+    "persistence",
+    "privilege-escalation",
+    "initial-access"
+   ]
+  },
+  "T1078.004": {
+   "name": "Cloud Accounts",
+   "tactics": [
+    "stealth",
+    "persistence",
+    "privilege-escalation",
+    "initial-access"
+   ]
+  },
+  "T1087.002": {
+   "name": "Domain Account",
+   "tactics": [
+    "discovery"
+   ]
+  },
+  "T1087.004": {
+   "name": "Cloud Account",
+   "tactics": [
+    "discovery"
+   ]
+  },
+  "T1098": {
+   "name": "Account Manipulation",
+   "tactics": [
+    "persistence",
+    "privilege-escalation"
+   ]
+  },
+  "T1098.001": {
+   "name": "Additional Cloud Credentials",
+   "tactics": [
+    "persistence",
+    "privilege-escalation"
+   ]
+  },
+  "T1098.003": {
+   "name": "Additional Cloud Roles",
+   "tactics": [
+    "persistence",
+    "privilege-escalation"
+   ]
+  },
+  "T1110": {
+   "name": "Brute Force",
+   "tactics": [
+    "credential-access"
+   ]
+  },
+  "T1110.002": {
+   "name": "Password Cracking",
+   "tactics": [
+    "credential-access"
+   ]
+  },
+  "T1110.003": {
+   "name": "Password Spraying",
+   "tactics": [
+    "credential-access"
+   ]
+  },
+  "T1134": {
+   "name": "Access Token Manipulation",
+   "tactics": [
+    "stealth",
+    "privilege-escalation"
+   ]
+  },
+  "T1134.005": {
+   "name": "SID-History Injection",
+   "tactics": [
+    "stealth",
+    "privilege-escalation"
+   ]
+  },
+  "T1136.002": {
+   "name": "Domain Account",
+   "tactics": [
+    "persistence"
+   ]
+  },
+  "T1187": {
+   "name": "Forced Authentication",
+   "tactics": [
+    "credential-access"
+   ]
+  },
+  "T1204": {
+   "name": "User Execution",
+   "tactics": [
+    "execution"
+   ]
+  },
+  "T1210": {
+   "name": "Exploitation of Remote Services",
+   "tactics": [
+    "lateral-movement"
+   ]
+  },
+  "T1484": {
+   "name": "Domain or Tenant Policy Modification",
+   "tactics": [
+    "defense-impairment",
+    "privilege-escalation"
+   ]
+  },
+  "T1484.001": {
+   "name": "Group Policy Modification",
+   "tactics": [
+    "defense-impairment",
+    "privilege-escalation"
+   ]
+  },
+  "T1484.002": {
+   "name": "Trust Modification",
+   "tactics": [
+    "defense-impairment",
+    "privilege-escalation"
+   ]
+  },
+  "T1485": {
+   "name": "Data Destruction",
+   "tactics": [
+    "impact"
+   ]
+  },
+  "T1490": {
+   "name": "Inhibit System Recovery",
+   "tactics": [
+    "impact"
+   ]
+  },
+  "T1528": {
+   "name": "Steal Application Access Token",
+   "tactics": [
+    "credential-access"
+   ]
+  },
+  "T1550.002": {
+   "name": "Pass the Hash",
+   "tactics": [
+    "lateral-movement"
+   ]
+  },
+  "T1550.003": {
+   "name": "Pass the Ticket",
+   "tactics": [
+    "lateral-movement"
+   ]
+  },
+  "T1552": {
+   "name": "Unsecured Credentials",
+   "tactics": [
+    "credential-access"
+   ]
+  },
+  "T1552.004": {
+   "name": "Private Keys",
+   "tactics": [
+    "credential-access"
+   ]
+  },
+  "T1552.006": {
+   "name": "Group Policy Preferences",
+   "tactics": [
+    "credential-access"
+   ]
+  },
+  "T1555.004": {
+   "name": "Windows Credential Manager",
+   "tactics": [
+    "credential-access"
+   ]
+  },
+  "T1556.007": {
+   "name": "Hybrid Identity",
+   "tactics": [
+    "defense-impairment",
+    "persistence",
+    "credential-access"
+   ]
+  },
+  "T1557": {
+   "name": "Adversary-in-the-Middle",
+   "tactics": [
+    "credential-access",
+    "collection"
+   ]
+  },
+  "T1557.001": {
+   "name": "Name Resolution Poisoning and SMB Relay",
+   "tactics": [
+    "credential-access",
+    "collection"
+   ]
+  },
+  "T1558": {
+   "name": "Steal or Forge Kerberos Tickets",
+   "tactics": [
+    "credential-access"
+   ]
+  },
+  "T1558.001": {
+   "name": "Golden Ticket",
+   "tactics": [
+    "credential-access"
+   ]
+  },
+  "T1558.002": {
+   "name": "Silver Ticket",
+   "tactics": [
+    "credential-access"
+   ]
+  },
+  "T1558.003": {
+   "name": "Kerberoasting",
+   "tactics": [
+    "credential-access"
+   ]
+  },
+  "T1558.004": {
+   "name": "AS-REP Roasting",
+   "tactics": [
+    "credential-access"
+   ]
+  },
+  "T1566": {
+   "name": "Phishing",
+   "tactics": [
+    "initial-access"
+   ]
+  },
+  "T1574": {
+   "name": "Hijack Execution Flow",
+   "tactics": [
+    "stealth",
+    "execution"
+   ]
+  },
+  "T1590.002": {
+   "name": "DNS",
+   "tactics": [
+    "reconnaissance"
+   ]
+  },
+  "T1606.002": {
+   "name": "SAML Tokens",
+   "tactics": [
+    "credential-access"
+   ]
+  },
+  "T1649": {
+   "name": "Steal or Forge Authentication Certificates",
+   "tactics": [
+    "credential-access"
+   ]
+  },
+  "T1685.001": {
+   "name": "Disable or Modify Windows Event Log",
+   "tactics": [
+    "defense-impairment"
+   ]
+  }
+ }
+}

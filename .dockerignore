@@ -1,0 +1,8 @@
+.git
+**/__pycache__
+.pytest_cache
+.ruff_cache
+*.egg-info
+tests
+ai/dataset/train.jsonl
+appliance/packer/output*

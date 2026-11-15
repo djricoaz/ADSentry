@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pytest:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(ruff:*)",
+      "Bash(adsentry scan:*)",
+      "Bash(adsentry navigator:*)",
+      "Bash(git status)",
+      "Bash(git diff:*)"
+    ],
+    "deny": [
+      "Read(./**/*.snapshot.json)",
+      "Read(./data/**)"
+    ]
+  }
+}

@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# Assistant de premier démarrage de l'appliance ADSentry (console ou SSH, en root).
+# Configure : nom d'hôte, réseau, DNS (vers les DC), NTP, compte web, TLS, cible AD/Entra, modèle IA.
+set -euo pipefail
+
+ENV_FILE=/opt/adsentry/.env
+CONF=/etc/adsentry
+[[ $EUID -eq 0 ]] || { echo "À lancer en root (sudo adsentry-setup)"; exit 1; }
+
+ask() { local prompt=$1 default=${2:-}; local v; read -r -p "$prompt${default:+ [$default]} : " v; echo "${v:-$default}"; }
+ask_secret() { local v; read -r -s -p "$1 : " v; echo >&2; echo "$v"; }
+
+echo "=== ADSentry – configuration initiale ==="
+
+# --- Identité et réseau --------------------------------------------------------
+HOSTNAME_FQDN=$(ask "Nom DNS de l'appliance" "adsentry.$(hostname -d 2>/dev/null || echo local)")
+hostnamectl set-hostname "${HOSTNAME_FQDN%%.*}"
+IFACE=$(ip -o -4 route show to default | awk '{print $5}' | head -1)
+if [[ $(ask "Adresse IP statique ? (o/n)" "o") == "o" ]]; then
+  IP_CIDR=$(ask "Adresse IP/masque (ex. 10.0.1.50/24)")
+  GW=$(ask "Passerelle")
+  cat > /etc/systemd/network/10-adsentry.network <<EOF
+[Match]
+Name=$IFACE
+[Network]
+Address=$IP_CIDR
+Gateway=$GW
+EOF
+fi
+DNS_SERVERS=$(ask "Serveurs DNS = contrôleurs de domaine (séparés par des espaces)")
+NTP_SERVERS=$(ask "Serveurs NTP (Kerberos exige < 5 min d'écart)" "$DNS_SERVERS")
+mkdir -p /etc/systemd/resolved.conf.d /etc/chrony/sources.d
+printf '[Resolve]\nDNS=%s\nDomains=~.\n' "$DNS_SERVERS" > /etc/systemd/resolved.conf.d/adsentry.conf
+: > /etc/chrony/sources.d/adsentry.sources
+for s in $NTP_SERVERS; do echo "server $s iburst" >> /etc/chrony/sources.d/adsentry.sources; done
+systemctl restart systemd-networkd systemd-resolved chrony || true
+
+# --- Accès web -----------------------------------------------------------------
+ADMIN_USER=$(ask "Identifiant web administrateur" "admin")
+ADMIN_PWD=$(ask_secret "Mot de passe web (14 caractères minimum)")
+[[ ${#ADMIN_PWD} -ge 14 ]] || { echo "Mot de passe trop court"; exit 1; }
+ADMIN_HASH=$(docker run --rm caddy:2 caddy hash-password --plaintext "$ADMIN_PWD")
+if [[ $(ask "Certificat TLS fourni par votre PKI ? (o/n)" "n") == "o" ]]; then
+  echo "Copiez cert.pem et key.pem dans $CONF/tls/ puis appuyez sur Entrée"; read -r
+  TLS="$CONF/tls/cert.pem $CONF/tls/key.pem"
+else
+  TLS="internal"
+fi
+
+# --- IA ------------------------------------------------------------------------
+MEM_GB=$(awk '/MemTotal/ {printf "%d", $2/1024/1024}' /proc/meminfo)
+MODEL=$(ask "Modèle de base Ollama (CPU)" "qwen3.5:4b")
+OLLAMA_MEM=$(( MEM_GB > 12 ? MEM_GB - 4 : 6 ))
+
+cat > "$ENV_FILE" <<EOF
+ADSENTRY_HOSTNAME=$HOSTNAME_FQDN
+ADSENTRY_ADMIN_USER=$ADMIN_USER
+ADSENTRY_ADMIN_HASH='$ADMIN_HASH'
+ADSENTRY_TLS=$TLS
+ADSENTRY_BASE_MODEL=$MODEL
+OLLAMA_MEMORY=${OLLAMA_MEM}g
+OLLAMA_CPUS=$(( $(nproc) > 2 ? $(nproc) - 1 : 1 ))
+TZ=$(timedatectl show -p Timezone --value)
+EOF
+chmod 600 "$ENV_FILE"
+
+# Clé maître des secrets (Fernet) : créée sur l'hôte, lisible par le seul groupe du service (uid 10001)
+if [[ ! -f $CONF/master.key ]]; then
+  head -c 32 /dev/urandom | base64 | tr '+/' '-_' > "$CONF/master.key"
+  chown root:10001 "$CONF/master.key" && chmod 440 "$CONF/master.key"
+fi
+
+# --- Cible d'audit ---------------------------------------------------------------
+if [[ $(ask "Déclarer maintenant un domaine AD à auditer ? (o/n)" "o") == "o" ]]; then
+  NAME=$(ask "Nom court de la cible" "corp")
+  DOMAIN=$(ask "Domaine DNS AD")
+  DC=$(ask "Contrôleur de domaine" "$(echo "$DNS_SERVERS" | awk '{print $1}')")
+  AUDIT_USER=$(ask "Compte d'audit (utilisateur standard, sans privilège)" "svc-adsentry")
+  AUDIT_PWD=$(ask_secret "Mot de passe du compte d'audit")
+  docker compose -f /opt/adsentry/appliance/docker-compose.yml --env-file "$ENV_FILE" run --rm --no-deps \
+    -e ADSENTRY_SECRET_VALUE="$AUDIT_PWD" worker python -c \
+    "import os; from adsentry.appliance.config import SecretStore; SecretStore().set('$NAME-ad', os.environ['ADSENTRY_SECRET_VALUE'])"
+  cat > "$CONF/targets.yaml" <<EOF
+targets:
+  - name: $NAME
+    schedule: "17 2 * * *"
+    ai_analysis: true
+    ad:
+      domain: $DOMAIN
+      dc: $DC
+      username: $AUDIT_USER
+      password_secret: $NAME-ad
+      sysvol: true
+      probes: true
+    # entra:
+    #   tenant_id: <id du tenant>
+    #   client_id: <id de l'application d'audit>
+    #   certificate: /etc/adsentry/certs/entra.pem
+    #   thumbprint: <empreinte du certificat>
+EOF
+  chown root:10001 "$CONF/targets.yaml" && chmod 640 "$CONF/targets.yaml"
+fi
+
+systemctl enable --now adsentry.service
+echo "Téléchargement des modèles IA (plusieurs minutes)…"
+docker compose -f /opt/adsentry/appliance/docker-compose.yml --env-file "$ENV_FILE" --profile init run --rm ollama-init
+echo
+echo "Terminé. Interface : https://$HOSTNAME_FQDN  (identifiant : $ADMIN_USER)"
+echo "Premier scan immédiat : sudo docker compose -f /opt/adsentry/appliance/docker-compose.yml exec worker adsentry run <cible>"

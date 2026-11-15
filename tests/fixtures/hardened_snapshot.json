@@ -1,0 +1,591 @@
+{
+ "schema_version": "2",
+ "collected_at": "2026-11-01T10:00:00Z",
+ "collector": "fixture-hardened",
+ "domain": {
+  "name": "corp.local",
+  "netbios": "CORP",
+  "sid": "S-1-5-21-1000-2000-3000",
+  "functional_level": 10,
+  "forest_functional_level": 10,
+  "machine_account_quota": 0,
+  "krbtgt_pwd_last_set": "2026-08-01T00:00:00Z",
+  "recycle_bin": true,
+  "ds_heuristics": null,
+  "min_pwd_length": 14,
+  "psos": [
+   {
+    "name": "Services",
+    "min_length": 24
+   }
+  ],
+  "last_backup": "2026-10-31T00:00:00Z",
+  "sysvol_replication": "dfsr",
+  "subnets": [
+   "10.0.1.0/24"
+  ],
+  "default_users_container": "CN=Users,DC=corp,DC=local",
+  "smartcard_pwd_rotation": true,
+  "pre2k_compat_members": []
+ },
+ "users": [
+  {
+   "sam": "Administrator",
+   "sid": "S-1-5-21-1000-2000-3000-500",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-512",
+    "S-1-5-32-544"
+   ],
+   "last_logon": "2026-06-01T00:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "admin_count": true,
+   "sensitive_no_delegation": true
+  },
+  {
+   "sam": "Guest",
+   "sid": "S-1-5-21-1000-2000-3000-501",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-514"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "enabled": false,
+   "primary_group_id": 514
+  },
+  {
+   "sam": "krbtgt",
+   "sid": "S-1-5-21-1000-2000-3000-502",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "enabled": false
+  },
+  {
+   "sam": "alice",
+   "sid": "S-1-5-21-1000-2000-3000-1101",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z"
+  },
+  {
+   "sam": "bob",
+   "sid": "S-1-5-21-1000-2000-3000-1102",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "upn": "bob@corp.local"
+  },
+  {
+   "sam": "svc_app",
+   "sid": "S-1-5-21-1000-2000-3000-1103",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "supported_enc_types": 24
+  },
+  {
+   "sam": "t0adm1",
+   "sid": "S-1-5-21-1000-2000-3000-1601",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-512",
+    "S-1-5-21-1000-2000-3000-525"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "admin_count": true,
+   "in_protected_users": true,
+   "sensitive_no_delegation": true
+  },
+  {
+   "sam": "t0adm2",
+   "sid": "S-1-5-21-1000-2000-3000-1602",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-512",
+    "S-1-5-21-1000-2000-3000-525"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "admin_count": true,
+   "in_protected_users": true,
+   "sensitive_no_delegation": true
+  },
+  {
+   "sam": "t0adm3",
+   "sid": "S-1-5-21-1000-2000-3000-1603",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-512",
+    "S-1-5-21-1000-2000-3000-525"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "admin_count": true,
+   "in_protected_users": true,
+   "sensitive_no_delegation": true
+  }
+ ],
+ "computers": [
+  {
+   "name": "DC01",
+   "sid": "S-1-5-21-1000-2000-3000-1000",
+   "dns_hostname": "dc01.corp.local",
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-10-20T00:00:00Z",
+   "laps": false,
+   "os": "Windows Server 2025 Datacenter",
+   "os_build": 26100,
+   "is_dc": true,
+   "ip": "10.0.1.10",
+   "owner_sid": "S-1-5-21-1000-2000-3000-512",
+   "primary_group_id": 516,
+   "last_update": "2026-10-15T00:00:00Z"
+  },
+  {
+   "name": "DC02",
+   "sid": "S-1-5-21-1000-2000-3000-1001",
+   "dns_hostname": "dc02.corp.local",
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-10-20T00:00:00Z",
+   "laps": false,
+   "os": "Windows Server 2025 Datacenter",
+   "os_build": 26100,
+   "is_dc": true,
+   "ip": "10.0.1.11",
+   "owner_sid": "S-1-5-21-1000-2000-3000-512",
+   "primary_group_id": 516,
+   "last_update": "2026-10-15T00:00:00Z"
+  },
+  {
+   "name": "WS01",
+   "sid": "S-1-5-21-1000-2000-3000-1105",
+   "dns_hostname": "ws01.corp.local",
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-10-20T00:00:00Z",
+   "laps": true,
+   "os": "Windows 11 Enterprise",
+   "os_build": 26100,
+   "primary_group_id": 515
+  }
+ ],
+ "groups": [
+  {
+   "sid": "S-1-5-21-1000-2000-3000-518",
+   "name": "Schema Admins",
+   "members": []
+  },
+  {
+   "sid": "S-1-5-21-1000-2000-3000-572",
+   "name": "Denied RODC Password Replication Group",
+   "members": [
+    "S-1-5-21-1000-2000-3000-512",
+    "S-1-5-21-1000-2000-3000-516",
+    "S-1-5-21-1000-2000-3000-517",
+    "S-1-5-21-1000-2000-3000-518",
+    "S-1-5-21-1000-2000-3000-519",
+    "S-1-5-21-1000-2000-3000-520",
+    "S-1-5-21-1000-2000-3000-521",
+    "S-1-5-21-1000-2000-3000-502"
+   ]
+  },
+  {
+   "sid": "S-1-5-21-1000-2000-3000-525",
+   "name": "Protected Users",
+   "members": [
+    "S-1-5-21-1000-2000-3000-1601",
+    "S-1-5-21-1000-2000-3000-1602",
+    "S-1-5-21-1000-2000-3000-1603"
+   ]
+  }
+ ],
+ "trusts": [
+  {
+   "target": "partner.local",
+   "sid": "S-1-5-21-7777-7777-7777",
+   "aes_enabled": true,
+   "last_change": "2026-10-30T08:00:00Z"
+  }
+ ],
+ "acl_edges": [
+  {
+   "principal_sid": "S-1-5-21-1000-2000-3000-516",
+   "target": "corp.local",
+   "right": "DS-Replication-Get-Changes-All",
+   "target_type": "domain",
+   "target_sid": null
+  }
+ ],
+ "gpos": [
+  {
+   "guid": "{31B2F340-016D-11D2-945F-00C04FB984F9}",
+   "name": "Default Domain Policy",
+   "linked_to": [
+    "DC=corp,DC=local"
+   ],
+   "applies_to_domain": true,
+   "writers": [
+    "S-1-5-21-1000-2000-3000-512"
+   ],
+   "security": {
+    "System Access": {
+     "MinimumPasswordLength": "14",
+     "ClearTextPassword": "0"
+    }
+   },
+   "registry": {
+    "machine\\software\\microsoft\\windows\\currentversion\\policies\\system\\kerberos\\parameters\\enablecbacandarmor": 1,
+    "machine\\software\\policies\\microsoft\\windows nt\\dnsclient\\enablemulticast": 0,
+    "machine\\software\\policies\\microsoft\\windows nt\\terminal services\\userauthentication": 1,
+    "machine\\software\\policies\\microsoft\\windows\\powershell\\scriptblocklogging\\enablescriptblocklogging": 1,
+    "machine\\software\\policies\\microsoft\\windows defender\\windows defender exploit guard\\asr\\rules\\9e6c4e1f-7d60-472f-ba1a-a39ef669e4b2": 1,
+    "machine\\software\\policies\\microsoft\\windows defender\\windows defender exploit guard\\asr\\rules\\d4f940ab-401b-4efc-aadc-ad5f3c50688a": 1,
+    "machine\\software\\policies\\microsoft\\windows defender\\windows defender exploit guard\\asr\\rules\\3b576869-a4ec-4529-8536-b80a7769e899": 1
+   },
+   "folder_options": {
+    "js": "notepad.exe",
+    "jse": "notepad.exe",
+    "vbs": "notepad.exe",
+    "vbe": "notepad.exe",
+    "wsf": "notepad.exe",
+    "wsh": "notepad.exe",
+    "hta": "notepad.exe"
+   },
+   "firewall_rules": [
+    {
+     "action": "Block",
+     "dir": "Out",
+     "app": "%SystemRoot%\\system32\\wscript.exe"
+    },
+    {
+     "action": "Block",
+     "dir": "Out",
+     "app": "%SystemRoot%\\system32\\cscript.exe"
+    },
+    {
+     "action": "Block",
+     "dir": "Out",
+     "app": "%SystemRoot%\\system32\\mshta.exe"
+    }
+   ],
+   "scripts": [
+    {
+     "path": "\\\\corp.local\\netlogon\\map.bat",
+     "writers": [
+      "S-1-5-21-1000-2000-3000-512"
+     ]
+    }
+   ]
+  },
+  {
+   "guid": "{6AC1786C-016F-11D2-945F-00C04FB984F9}",
+   "name": "Default Domain Controllers Policy",
+   "linked_to": [
+    "OU=Domain Controllers,DC=corp,DC=local"
+   ],
+   "applies_to_dcs": true,
+   "security": {
+    "Privilege Rights": {
+     "SeInteractiveLogonRight": "*S-1-5-32-544"
+    }
+   },
+   "registry": {
+    "machine\\system\\currentcontrolset\\control\\lsa\\lmcompatibilitylevel": 5,
+    "machine\\system\\currentcontrolset\\services\\ntds\\parameters\\ldapserverintegrity": 2,
+    "machine\\software\\microsoft\\windows\\currentversion\\policies\\system\\kdc\\parameters\\enablecbacandarmor": 1
+   },
+   "audit": {
+    "Audit Credential Validation": 3,
+    "Audit Kerberos Authentication Service": 3,
+    "Audit Kerberos Service Ticket Operations": 3,
+    "Audit Computer Account Management": 3,
+    "Audit Security Group Management": 3,
+    "Audit User Account Management": 3,
+    "Audit Directory Service Access": 3,
+    "Audit Directory Service Changes": 3,
+    "Audit Logon": 3,
+    "Audit Special Logon": 3
+   }
+  },
+  {
+   "guid": "{22222222-3333-4444-5555-666666666666}",
+   "name": "Tiering - postes",
+   "linked_to": [
+    "OU=Workstations,DC=corp,DC=local"
+   ],
+   "security": {
+    "Privilege Rights": {
+     "SeDenyInteractiveLogonRight": "*S-1-5-21-1000-2000-3000-512",
+     "SeDenyRemoteInteractiveLogonRight": "*S-1-5-21-1000-2000-3000-512"
+    }
+   }
+  }
+ ],
+ "dns_zones": [
+  {
+   "name": "corp.local",
+   "critical": true
+  },
+  {
+   "name": "_msdcs.corp.local",
+   "critical": true
+  }
+ ],
+ "dc_probes": [
+  {
+   "name": "DC01",
+   "smb1": false,
+   "smb_signing_enabled": true,
+   "smb_signing_required": true,
+   "ldap_signing_required": true,
+   "ldaps_channel_binding_required": true,
+   "ldaps_protocols": [
+    "TLSv1.2",
+    "TLSv1.3"
+   ],
+   "spooler": false,
+   "webclient": false,
+   "coerce_interfaces": [],
+   "null_session": false,
+   "anonymous_bind": false,
+   "net_session_enum_open": false,
+   "ms17_010": false,
+   "ms14_068": false
+  },
+  {
+   "name": "DC02",
+   "smb1": false,
+   "smb_signing_enabled": true,
+   "smb_signing_required": true,
+   "ldap_signing_required": true,
+   "ldaps_channel_binding_required": true,
+   "ldaps_protocols": [
+    "TLSv1.2",
+    "TLSv1.3"
+   ],
+   "spooler": false,
+   "webclient": false,
+   "coerce_interfaces": [],
+   "null_session": false,
+   "anonymous_bind": false,
+   "net_session_enum_open": false,
+   "ms17_010": false,
+   "ms14_068": false
+  }
+ ],
+ "tls_probes": [
+  {
+   "host": "wsus.corp.local",
+   "port": 8531,
+   "service": "wsus",
+   "protocols": [
+    "TLSv1.2"
+   ]
+  }
+ ],
+ "pki": {
+  "cas": [
+   {
+    "name": "CORP-CA",
+    "dns_host": "ca01.corp.local",
+    "edit_flags": 0,
+    "interface_flags": 1601,
+    "web_enrollment_https": true,
+    "web_enrollment_epa": true,
+    "manage_ca_principals": [
+     "S-1-5-21-1000-2000-3000-512"
+    ],
+    "cert_key_size": 4096,
+    "cert_signature_algorithm": "sha256",
+    "cert_not_after": "2035-01-01T00:00:00Z",
+    "patched_cve_2024_49019": true
+   }
+  ],
+  "templates": [
+   {
+    "name": "CorpUser",
+    "published_on": [
+     "CORP-CA"
+    ],
+    "ekus": [
+     "1.3.6.1.5.5.7.3.2"
+    ],
+    "enroll_principals": [
+     "S-1-5-21-1000-2000-3000-513"
+    ],
+    "write_principals": [
+     "S-1-5-21-1000-2000-3000-512"
+    ],
+    "owner_sid": "S-1-5-21-1000-2000-3000-519"
+   }
+  ],
+  "certificates": [
+   {
+    "subject": "CN=CORP-CA",
+    "store": "root",
+    "sig_hash": "sha256",
+    "key_type": "rsa",
+    "key_size": 4096,
+    "rsa_exponent": 65537,
+    "roca": false
+   }
+  ]
+ },
+ "dc_registry": {
+  "strong_cert_binding_enforcement": 2,
+  "certificate_mapping_methods": 24
+ },
+ "entra": {
+  "tenant_id": "00000000-0000-0000-0000-00000000beef",
+  "name": "contoso",
+  "security_defaults": false,
+  "users_can_register_apps": false,
+  "users_can_consent": false,
+  "users_can_create_tenants": false,
+  "guest_role": "restricted",
+  "guest_invite_from": "adminsAndGuestInviters",
+  "federated_domains": [],
+  "connect_version": "2.5.3.0",
+  "pim_available": true,
+  "users": [
+   {
+    "id": "u1",
+    "upn": "ga1@contoso.onmicrosoft.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z"
+   },
+   {
+    "id": "u2",
+    "upn": "ga2@contoso.onmicrosoft.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z"
+   },
+   {
+    "id": "u3",
+    "upn": "ga3@contoso.onmicrosoft.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z"
+   },
+   {
+    "id": "u10",
+    "upn": "staff0@corp.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z",
+    "on_prem_synced": true
+   },
+   {
+    "id": "u11",
+    "upn": "staff1@corp.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z",
+    "on_prem_synced": true
+   },
+   {
+    "id": "u12",
+    "upn": "staff2@corp.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z",
+    "on_prem_synced": true
+   },
+   {
+    "id": "u13",
+    "upn": "staff3@corp.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z",
+    "on_prem_synced": true
+   },
+   {
+    "id": "u14",
+    "upn": "staff4@corp.com",
+    "mfa_registered": true,
+    "last_sign_in": "2026-10-30T08:00:00Z",
+    "created": "2024-01-01T00:00:00Z",
+    "on_prem_synced": true
+   }
+  ],
+  "role_assignments": [
+   {
+    "role": "Global Administrator",
+    "role_template_id": "62e90394-69f5-4237-9190-012177145e10",
+    "principal_id": "u1"
+   },
+   {
+    "role": "Global Administrator",
+    "role_template_id": "62e90394-69f5-4237-9190-012177145e10",
+    "principal_id": "u2"
+   },
+   {
+    "role": "Global Administrator",
+    "role_template_id": "62e90394-69f5-4237-9190-012177145e10",
+    "principal_id": "u3",
+    "assignment": "eligible",
+    "permanent": false
+   }
+  ],
+  "apps": [
+   {
+    "id": "app1",
+    "app_id": "a1",
+    "name": "HR-Sync",
+    "graph_app_permissions": [
+     "User.Read.All"
+    ],
+    "credentials": [
+     {
+      "kind": "certificate",
+      "start": "2026-05-01T00:00:00Z",
+      "end": "2027-05-01T00:00:00Z"
+     }
+    ]
+   }
+  ],
+  "ca_policies": [
+   {
+    "name": "MFA admins",
+    "state": "enabled",
+    "include_roles": [
+     "62e90394-69f5-4237-9190-012177145e10"
+    ],
+    "grant_controls": [
+     "mfa"
+    ]
+   },
+   {
+    "name": "MFA tous",
+    "state": "enabled",
+    "include_users": [
+     "All"
+    ],
+    "grant_controls": [
+     "mfa"
+    ]
+   },
+   {
+    "name": "Bloquer legacy",
+    "state": "enabled",
+    "include_users": [
+     "All"
+    ],
+    "client_app_types": [
+     "exchangeActiveSync",
+     "other"
+    ],
+    "grant_controls": [
+     "block"
+    ]
+   }
+  ]
+ }
+}
