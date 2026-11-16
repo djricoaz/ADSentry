@@ -75,6 +75,11 @@ Tout le reste se fait dans la console web `https://<nom de l'appliance>` :
    ouverture (Tier 0, procédures de correction, comptes de service) : adaptez les passages entre [crochets]. Réglages (modèle de base, base de connaissances)
    et données dans `/var/lib/adsentry/ai.json`, `/var/lib/adsentry/knowledge/`, `/var/lib/adsentry/rag_index.npz`.
 
+## Intégrations
+
+Notifications, SIEM, Jira / ServiceNow et API : voir [INTEGRATIONS.md](INTEGRATIONS.md). Les envois partent du
+conteneur `worker` : ouvrez les flux sortants nécessaires (SMTP, Syslog, Splunk, Jira, ServiceNow, webhook).
+
 ## Comptes et rôles de la console
 
 | Rôle | Peut |

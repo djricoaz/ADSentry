@@ -23,6 +23,7 @@ from typing import Annotated, Literal
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel, Field, ValidationError
 
+from .. import __version__
 from ..appliance import auth as A
 from ..appliance.config import (
     DATA_DIR as _DEFAULT_DATA,
@@ -79,7 +80,16 @@ async def lifespan(_app: FastAPI):
     stop.set()
 
 
-app = FastAPI(title="ADSentry API", version="0.2.0", lifespan=lifespan, docs_url=None, redoc_url=None)
+app = FastAPI(
+    title="ADSentry API",
+    version=__version__,
+    description="API de la console ADSentry. Authentification : session de la console ou jeton d'API "
+    "(« Authorization: Bearer ads_… », créé dans Administration > Intégrations).",
+    lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,  # servi après authentification : /api/openapi.json
+)
 
 
 # ----------------------------------------------------------------------------- sécurité
@@ -89,7 +99,9 @@ app = FastAPI(title="ADSentry API", version="0.2.0", lifespan=lifespan, docs_url
 async def csrf_and_headers(request: Request, call_next):
     # Toute requête modifiante doit porter l'en-tête X-ADSentry (impossible à poser depuis un autre site
     # sans pré-vol CORS, que l'API n'autorise pas) ; le cookie est en outre SameSite=Strict.
-    if request.method not in ("GET", "HEAD", "OPTIONS") and request.url.path.startswith("/api/"):
+    # Un jeton d'API (Bearer) n'est jamais envoyé automatiquement par un navigateur : pas de risque CSRF.
+    bearer = request.headers.get("authorization", "").startswith("Bearer ")
+    if request.method not in ("GET", "HEAD", "OPTIONS") and request.url.path.startswith("/api/") and not bearer:
         if request.headers.get(CSRF_HEADER) != "1":
             return Response(
                 '{"detail":"Requête refusée (en-tête X-ADSentry manquant)"}', 403, media_type="application/json"
@@ -124,6 +136,17 @@ def _set_session(response: Response, request: Request, username: str) -> None:
 
 
 def current_user(request: Request) -> A.User:
+    header = request.headers.get("authorization", "")
+    if header.startswith("Bearer "):
+        from ..appliance import tokens
+
+        tok = tokens.resolve(header[7:].strip())
+        if tok is None:
+            raise HTTPException(401, "Jeton d'API invalide, révoqué ou expiré")
+        # identité de service : le rôle est celui du jeton, le nom celui du jeton (journal d'audit)
+        return A.User(
+            username=f"jeton:{tok['name']}", role=A.Role(tok["role"]), password_hash="!", created_at=tok["created_at"]
+        )
     username = sessions.resolve(request.cookies.get(COOKIE))
     user = users.get(username) if username else None
     if user is None or user.disabled:
@@ -669,6 +692,252 @@ def ai_dataset(admin: Admin, n: int = 500):
     )
 
 
+# ----------------------------------------------------------------------------- notifications (tous les rôles)
+
+
+@app.get("/api/notifications")
+def get_notifications(user: Viewer, limit: int = 50):
+    from ..integrations import notifications as N
+
+    return N.for_user(user.username, user.role == A.Role.admin, min(max(limit, 1), 300))
+
+
+@app.post("/api/notifications/read")
+def read_notifications(user: Viewer):
+    from ..integrations import notifications as N
+
+    N.mark_read(user.username)
+    return {"ok": True}
+
+
+# ----------------------------------------------------------------------------- intégrations (admin)
+
+
+def _integrations_view() -> dict:
+    from ..integrations import settings as I
+
+    cfg = I.load().model_dump()
+    store = secret_store()
+    return {
+        "settings": cfg,
+        "secrets": {k: store.has(I.secret_name(k)) for k in I.SECRET_FIELDS},
+        "secret_labels": I.SECRET_FIELDS,
+        "status": I.statuses(),
+        "worker": worker_status(),
+    }
+
+
+@app.get("/api/integrations")
+def get_integrations(_: Admin):
+    return _integrations_view()
+
+
+class IntegrationUpdate(BaseModel):
+    config: dict
+    secret: str | None = Field(None, max_length=4096)  # vide = inchangé
+    clear_secret: bool = False
+
+
+@app.put("/api/integrations/{kind}")
+def put_integration(kind: str, body: IntegrationUpdate, admin: Admin):
+    from ..integrations import settings as I
+
+    if kind not in (*I.KINDS, "general"):
+        raise HTTPException(404, "Intégration inconnue")
+    cfg = I.load()
+    try:
+        if kind == "general":
+            cfg = I.IntegrationSettings.model_validate(
+                {**cfg.model_dump(), "console_url": body.config.get("console_url", "")}
+            )
+        else:
+            current = getattr(cfg, kind).model_dump()
+            setattr(cfg, kind, type(getattr(cfg, kind)).model_validate({**current, **body.config}))
+            I.IntegrationSettings.model_validate(cfg.model_dump())
+    except ValidationError as exc:
+        raise HTTPException(400, exc.errors()[0]["msg"].removeprefix("Value error, ")) from exc
+    store = secret_store()
+    if body.secret:
+        store.set(I.secret_name(kind), body.secret)
+    elif body.clear_secret:
+        store.delete(I.secret_name(kind))
+    I.save(cfg)
+    A.audit(
+        "integration_updated",
+        admin.username,
+        integration=kind,
+        enabled=getattr(getattr(cfg, kind, None), "enabled", None),
+    )
+    return _integrations_view()
+
+
+@app.post("/api/integrations/{kind}/test")
+def test_integration(kind: str, admin: Admin):
+    from ..integrations import settings as I
+
+    if kind not in I.KINDS:
+        raise HTTPException(404, "Intégration inconnue")
+    return _enqueue(JobKind.integration_test, admin, target=kind)
+
+
+@app.get("/api/scans/{scan_id}/tickets")
+def scan_tickets(scan_id: str, _: Viewer):
+    from ..integrations.dispatch import tickets_for_scan
+    from ..integrations.settings import load as load_integrations
+
+    cfg = load_integrations()
+    return {
+        "tickets": tickets_for_scan(_load(scan_id)),
+        "system": "jira" if cfg.jira.enabled else "servicenow" if cfg.servicenow.enabled else None,
+    }
+
+
+@app.post("/api/scans/{scan_id}/tickets/{rule_id}")
+def create_ticket(scan_id: str, rule_id: str, admin: Admin):
+    _rule_and_finding(scan_id, rule_id)
+    return _enqueue(JobKind.ticket, admin, scan_id=scan_id, target=rule_id)
+
+
+# ----------------------------------------------------------------------------- jetons d'API (admin)
+
+
+class TokenInput(BaseModel):
+    name: str = Field(min_length=2, max_length=60)
+    role: A.Role = A.Role.viewer
+    days: int | None = Field(None, ge=1, le=3650)
+
+
+@app.get("/api/tokens")
+def list_api_tokens(_: Admin):
+    from ..appliance import tokens
+
+    return tokens.list_tokens()
+
+
+@app.post("/api/tokens")
+def create_api_token(body: TokenInput, admin: Admin):
+    from ..appliance import tokens
+
+    if admin.username.startswith("jeton:"):
+        raise HTTPException(403, "Un jeton d'API ne peut pas créer d'autres jetons")
+    try:
+        item, secret = tokens.create(body.name, body.role, admin.username, body.days)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    A.audit("api_token_created", admin.username, token=item["name"], role=item["role"])
+    return {**item, "token": secret}
+
+
+@app.delete("/api/tokens/{token_id}")
+def revoke_api_token(token_id: str, admin: Admin):
+    from ..appliance import tokens
+
+    if not tokens.revoke(token_id):
+        raise HTTPException(404, "Jeton introuvable")
+    A.audit("api_token_revoked", admin.username, token=token_id)
+    return {"ok": True}
+
+
+# ------------------------------------------------------------------------ documentation de l'API (Swagger, hors ligne)
+
+
+def _openapi_30(node):
+    """OpenAPI 3.1 → 3.0 pour Swagger UI 4 : « X ou null » devient « X, nullable »."""
+    if isinstance(node, list):
+        return [_openapi_30(x) for x in node]
+    if not isinstance(node, dict):
+        return node
+    node = {k: _openapi_30(v) for k, v in node.items()}
+    for key in ("anyOf", "oneOf"):
+        alts = node.get(key)
+        if isinstance(alts, list) and any(a == {"type": "null"} for a in alts):
+            rest = [a for a in alts if a != {"type": "null"}]
+            node.pop(key)
+            if len(rest) == 1:
+                node = {**rest[0], **node}
+            else:
+                node[key] = rest
+            node["nullable"] = True
+    if isinstance(node.get("type"), list):
+        types = [t for t in node["type"] if t != "null"]
+        node["nullable"] = len(types) != len(node["type"])
+        node["type"] = types[0] if len(types) == 1 else types
+    if "const" in node:
+        node["enum"] = [node.pop("const")]
+    if "examples" in node and isinstance(node["examples"], list):
+        node["example"] = node.pop("examples")[0] if node["examples"] else None
+    return node
+
+
+@app.get("/api/openapi.json", include_in_schema=False)
+def openapi_schema(_: Viewer, compat: bool = False):
+    import copy
+
+    schema = copy.deepcopy(app.openapi())
+    schema.setdefault("components", {})["securitySchemes"] = {
+        "jeton": {"type": "http", "scheme": "bearer", "description": "Jeton d'API ADSentry (ads_…)"},
+        "session": {"type": "apiKey", "in": "cookie", "name": COOKIE},
+    }
+    schema["security"] = [{"jeton": []}, {"session": []}]
+    groups = [
+        ("/api/auth", "Authentification"),
+        ("/api/users", "Comptes"),
+        ("/api/tokens", "Jetons d'API"),
+        ("/api/targets", "Cibles d'audit"),
+        ("/api/jobs", "Tâches"),
+        ("/api/notifications", "Notifications"),
+        ("/api/integrations", "Intégrations"),
+        ("/api/ai", "IA locale"),
+        ("/api/scans", "Rapports et scripts"),
+        ("/api/dashboard", "Tableau de bord"),
+        ("/api/compare", "Tableau de bord"),
+        ("/api/audit", "Journal d'audit"),
+    ]
+    for path, ops in schema.get("paths", {}).items():
+        tag = next((t for prefix, t in groups if path.startswith(prefix)), "Référentiel")
+        for op in ops.values():
+            if isinstance(op, dict):
+                op["tags"] = [tag]
+    if compat:  # Swagger UI embarqué (version 4) : OpenAPI 3.0
+        schema = _openapi_30(schema)
+        schema["openapi"] = "3.0.3"
+    return schema
+
+
+@app.get("/api/docs", include_in_schema=False)
+def swagger_page(request: Request):
+    from fastapi.responses import HTMLResponse, RedirectResponse
+
+    if sessions.resolve(request.cookies.get(COOKIE)) is None:
+        return RedirectResponse("/")
+    html = """<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>API ADSentry</title>
+<link rel="stylesheet" href="/api/docs/static/swagger-ui.css"></head><body><div id="swagger-ui"></div>
+<script src="/api/docs/static/swagger-ui-bundle.js"></script><script src="/api/docs/init.js"></script></body></html>"""
+    return HTMLResponse(html)
+
+
+@app.get("/api/docs/init.js", include_in_schema=False)
+def swagger_init():
+    # Script externe (pas de script en ligne : CSP script-src 'self') ; ajoute l'en-tête anti-CSRF aux essais
+    js = """window.ui = SwaggerUIBundle({ url: "/api/openapi.json?compat=1", dom_id: "#swagger-ui", deepLinking: true,
+  persistAuthorization: true, tryItOutEnabled: false,
+  requestInterceptor: (req) => { req.headers["X-ADSentry"] = "1"; return req; } });"""
+    return Response(js, media_type="application/javascript")
+
+
+@app.get("/api/docs/static/{name}", include_in_schema=False)
+def swagger_static(name: str):
+    from fastapi.responses import FileResponse
+
+    try:
+        import swagger_ui_bundle
+    except ImportError as exc:
+        raise HTTPException(404, "Swagger UI non installé (pip install swagger-ui-bundle)") from exc
+    if name not in {"swagger-ui.css", "swagger-ui-bundle.js", "favicon-32x32.png"}:
+        raise HTTPException(404, "Fichier inconnu")
+    return FileResponse(Path(swagger_ui_bundle.swagger_ui_path) / name)
+
+
 # ----------------------------------------------------------------------------- évaluations (lecture)
 
 
@@ -904,6 +1173,10 @@ async def create_scan(snapshot: UploadFile, admin: Admin):
 
     save_topology(snap, scan_id)
     A.audit("snapshot_imported", admin.username, scan=scan_id, domain=result.domain)
+    try:  # notifications et intégrations (exécutées par le worker)
+        jobs.create(JobKind.notify, scan_id=scan_id, user=admin.username)
+    except JobConflict:
+        pass
     return {"id": scan_id, "global_score": result.global_score}
 
 

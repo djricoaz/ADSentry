@@ -25,6 +25,8 @@ lancement des scans avec avancement en direct, planification, synthèse IA, rapp
 Deux rôles : **Administrateur** (gestion complète) et **Lecteur** (consultation des évaluations).
 Chaque constat dispose d'un **script PowerShell de correction** (simulation par défaut, sauvegarde, vérification
 du domaine), téléchargeable seul ou en archive ; voir [docs/SCRIPTS.md](docs/SCRIPTS.md).
+Notifications (cloche, bureau, e-mail, Teams/Slack), **SIEM** (Syslog CEF, Splunk HEC), **ITSM** (Jira,
+ServiceNow), **API documentée** (Swagger) avec jetons d'accès : voir [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 La vue **Topologie** dessine les chemins des comptes et groupes à risque vers le Tier 0, et la carte des
 approbations entre domaines et forêts avec une simulation de compromission.
 
@@ -71,6 +73,7 @@ adsentry scan snapshot.json
 | [docs/ROADMAP.md](docs/ROADMAP.md) | phases de développement (à suivre avec `/phase <n>` dans Claude Code) |
 | [docs/APPLIANCE.md](docs/APPLIANCE.md) | construction, flux réseau, comptes et rôles, exploitation de l'appliance |
 | [docs/INSTALL-LINUX.md](docs/INSTALL-LINUX.md) | installation sur un serveur Linux sans Docker (systemd) |
+| [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) | notifications, SIEM, Jira / ServiceNow, API et jetons |
 | [docs/SCRIPTS.md](docs/SCRIPTS.md) | scripts PowerShell de correction : sortes, garanties, exécution |
 | [docs/COUVERTURE.md](docs/COUVERTURE.md) | ce qui est contrôlé dans l'AD et Entra ID, et ce qui ne l'est pas encore |
 | [docs/ENTRA.md](docs/ENTRA.md) | création de l'application d'audit Entra ID (lecture seule) |

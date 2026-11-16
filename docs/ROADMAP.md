@@ -72,6 +72,9 @@ Objectif : prouver que la collecte produit un Snapshot juste sur un vrai domaine
 - [x] Scripts PowerShell de correction par constat (modèles vérifiés, GPO générique, guides, brouillons IA
       contrôlés), simulation par défaut ; archive par rapport (docs/SCRIPTS.md)
 - [ ] Étendre les modèles vérifiés (ADCS, ACL, approbations) à partir du lab
+- [x] Intégrations : centre de notifications, e-mail, webhook (Teams/Slack), SIEM (Syslog CEF, Splunk HEC,
+      journal d'audit), ITSM (Jira, ServiceNow, tickets automatiques sans doublon), jetons d'API, Swagger hors ligne
+- [x] Interface : thème plus vivant, mode sombre, cadres et panneaux avec retour, sections repliables
 - [ ] Export PDF des comparaisons ; objectifs de maturité par périmètre
 - [x] Comptes locaux et rôles **administrateur / lecteur** à la place du basic auth ; sessions, verrouillage,
       protection CSRF, journal d'audit de la console, assistant de premier démarrage (jeton d'installation)

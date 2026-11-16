@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ADSentry</title>
 <link rel="stylesheet" href="style.css">
+<script src="theme.js"></script>
 </head>
 <body>
 <svg xmlns="http://www.w3.org/2000/svg" class="sprite" aria-hidden="true">
@@ -34,6 +35,14 @@
   <symbol id="i-user" viewBox="0 0 16 16"><circle cx="8" cy="5" r="3"/><path d="M2.5 14.5c0-3 2.5-5.2 5.5-5.2s5.5 2.2 5.5 5.2"/></symbol>
   <symbol id="i-computer" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="8.5" rx="1"/><path d="M5.5 14h5M8 11v3"/></symbol>
   <symbol id="i-domain" viewBox="0 0 16 16"><path d="M2 14.5h12M3 14.5V6l5-3.5L13 6v8.5"/><path d="M6 14.5v-4h4v4M6 7.5h4"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 16 16"><path d="M4 11.5V7a4 4 0 0 1 8 0v4.5l1.2 1.5H2.8z"/><path d="M6.5 14.5a1.6 1.6 0 0 0 3 0"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 16 16"><rect x="1.5" y="3.5" width="13" height="9" rx="1"/><path d="M2 4.5l6 4.5 6-4.5"/></symbol>
+  <symbol id="i-link" viewBox="0 0 16 16"><path d="M6.5 9.5l3-3M7 4.5l1.2-1.2a2.8 2.8 0 0 1 4 4L11 8.5M9 11.5l-1.2 1.2a2.8 2.8 0 0 1-4-4L5 7.5"/></symbol>
+  <symbol id="i-siem" viewBox="0 0 16 16"><path d="M1.5 8h3l1.5-4 2.5 8 1.5-4h4.5"/></symbol>
+  <symbol id="i-ticket" viewBox="0 0 16 16"><path d="M1.5 5V3.5h13V5a2 2 0 0 0 0 4v1.5h-13V9a2 2 0 0 0 0-4z"/><path d="M6 6.5h4M6 8.5h4"/></symbol>
+  <symbol id="i-plug" viewBox="0 0 16 16"><path d="M5.5 1.5v3M10.5 1.5v3M3.5 4.5h9v3a4.5 4.5 0 0 1-9 0zM8 12v2.5"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 16 16"><path d="M13.5 10A6 6 0 0 1 6 2.5a6 6 0 1 0 7.5 7.5z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3"/><path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3 3l1 1M12 12l1 1M3 13l1-1M12 4l1-1"/></symbol>
   <symbol id="i-download" viewBox="0 0 16 16"><path d="M8 2.5v8M5 7.5l3 3 3-3M2.5 10.5v3h11v-3"/></symbol>
 </svg>
 
@@ -73,6 +82,7 @@
       <a href="#/targets" data-view="targets" data-admin><svg><use href="#i-target"/></svg>Cibles d'audit</a>
       <a href="#/jobs" data-view="jobs" data-admin><svg><use href="#i-jobs"/></svg>Tâches</a>
       <a href="#/users" data-view="users" data-admin><svg><use href="#i-users"/></svg>Comptes et rôles</a>
+      <a href="#/integrations" data-view="integrations" data-admin><svg><use href="#i-plug"/></svg>Intégrations et API</a>
       <a href="#/ai" data-view="ai" data-admin><svg><use href="#i-ai"/></svg>IA locale</a>
       <a href="#/audit" data-view="audit" data-admin><svg><use href="#i-audit"/></svg>Journal d'audit</a>
     </nav>
@@ -82,6 +92,7 @@
         <span class="user-name" id="user-name"></span>
         <span class="user-role" id="user-role"></span>
       </div>
+      <button class="side-btn theme-btn" id="theme-btn" title="Mode clair ou sombre" aria-label="Basculer le mode clair ou sombre"><svg><use href="#i-moon"/></svg></button>
       <button class="side-btn" id="password-btn" title="Changer mon mot de passe" aria-label="Changer mon mot de passe"><svg><use href="#i-key"/></svg></button>
       <button class="side-btn" id="logout-btn" title="Se déconnecter" aria-label="Se déconnecter"><svg><use href="#i-logout"/></svg></button>
     </div>
@@ -94,6 +105,10 @@
       <button class="icon-btn menu-btn" id="menu-btn" aria-label="Ouvrir le menu"><svg><use href="#i-menu"/></svg></button>
       <h1 id="page-title">Vue d'ensemble</h1>
       <div class="topbar-actions">
+        <div class="notif-wrap">
+          <button class="icon-btn notif-btn" id="notif-btn" aria-label="Notifications" aria-expanded="false"><svg><use href="#i-bell"/></svg><span class="notif-count" id="notif-count" hidden></span></button>
+          <div class="notif-panel" id="notif-panel" hidden></div>
+        </div>
         <a class="job-pill" id="job-indicator" href="#/jobs" hidden><i class="spinner" aria-hidden="true"></i><span></span></a>
         <label class="field-inline" id="domain-field">
           <span class="visually-hidden">Périmètre</span>

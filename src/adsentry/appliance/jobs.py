@@ -29,6 +29,9 @@ class JobKind(StrEnum):
     ai_setup = "ai_setup"
     ai_index = "ai_index"
     ai_script = "ai_script"
+    notify = "notify"  # intégrations après l'import d'un snapshot
+    ticket = "ticket"
+    integration_test = "integration_test"
 
 
 class JobStatus(StrEnum):

@@ -229,6 +229,19 @@ def execute_job(job: Job, store: JobStore, secrets: SecretStore | None = None) -
             progress(10, f"Rédaction d'un brouillon de script pour {job.target} par l'IA locale")
             result = ScanResult.model_validate_json((DATA_DIR / f"{job.scan_id}.json").read_text(encoding="utf-8"))
             job.result = draft_script(job.scan_id, result, job.target, DATA_DIR)
+        elif job.kind == JobKind.notify:
+            progress(20, "Notifications et intégrations")
+            job.result = _integrations_after_scan(job.scan_id)
+        elif job.kind == JobKind.ticket:
+            from ..integrations.dispatch import create_ticket
+
+            progress(20, f"Création d'un ticket pour {job.target}")
+            job.result = create_ticket(job.scan_id, job.target)
+        elif job.kind == JobKind.integration_test:
+            from ..integrations.dispatch import test
+
+            progress(20, f"Test de l'intégration {job.target}")
+            job.result = {"detail": test(job.target)}
         elif job.kind == JobKind.ai_index:
             from ..ai.admin import build_index
 
@@ -250,10 +263,19 @@ def execute_job(job: Job, store: JobStore, secrets: SecretStore | None = None) -
                 job.scan_id = path.stem
                 r = ScanResult.model_validate_json(path.read_text(encoding="utf-8"))
                 job.result = {"global_score": r.global_score, "findings": len(r.findings), "domain": r.domain}
+                progress(97, "Notifications et intégrations")
+                job.result["integrations"] = _integrations_after_scan(job.scan_id)
         job.status, job.progress, job.step = JobStatus.succeeded, 100, "Terminé"
     except Exception as exc:
         log.exception("Tâche %s (%s %s) en échec", job.id, job.kind, job.target or job.scan_id)
         job.status, job.error, job.step = JobStatus.failed, str(exc)[:500], "Échec"
+        if job.kind == JobKind.scan:
+            try:
+                from ..integrations.dispatch import on_scan_failed
+
+                on_scan_failed(job.target or "?", job.error)
+            except Exception:
+                log.exception("Notification d'échec impossible")
     job.finished_at = datetime.now(UTC)
     job.log.append(
         {
@@ -290,6 +312,17 @@ def setup_ai(progress=_noop) -> dict:
     progress(92, f"Création du modèle {s.analyst_model} à partir de {s.base_model}")
     admin.create_analyst(s.analyst_model, s.base_model, lambda st: None)
     return {"base_model": s.base_model, "embed_model": s.embed_model, "analyst_model": s.analyst_model}
+
+
+def _integrations_after_scan(scan_id: str) -> dict:
+    """Notifications, SIEM et tickets après un scan ; une erreur ici ne fait jamais échouer le scan."""
+    try:
+        from ..integrations.dispatch import on_scan_finished
+
+        return on_scan_finished(scan_id)
+    except Exception as exc:
+        log.exception("Intégrations après le scan %s", scan_id)
+        return {"error": str(exc)[:300]}
 
 
 def _start_heartbeat(stop: threading.Event | None) -> None:
@@ -329,6 +362,12 @@ def worker_loop(poll_seconds: int = 3, stop: threading.Event | None = None) -> N
                         log.info("%s : scan déjà en cours, planification ignorée", target.name)
             if now.minute == 0:
                 store.purge()
+            try:  # journal d'audit de la console vers le SIEM
+                from ..integrations.dispatch import forward_audit
+
+                forward_audit()
+            except Exception:
+                log.exception("Transfert du journal d'audit au SIEM impossible")
         job = store.claim_next()
         if job is not None:
             execute_job(job, store)

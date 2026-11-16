@@ -42,6 +42,7 @@ const VIEWS = {
   users: { title: "Comptes et rôles", group: "admin", admin: true },
   audit: { title: "Journal d'audit", group: "admin", admin: true },
   ai: { title: "IA locale", group: "admin", admin: true },
+  integrations: { title: "Intégrations et API", group: "admin", admin: true },
 };
 
 const state = { scans: [], scanId: null, scan: null, domain: null, rules: null, mitre: null, filters: {}, user: null, minPassword: 12, period: "" };
@@ -121,7 +122,8 @@ function section(title, sub, ...body) {
 
 // ---------------------------------------------------------------------------- cadres (iframe) refermables
 function openFrame(path, title) {
-  const url = `${location.pathname}${path}${path.includes("?") ? "&" : "?"}frame=1`;
+  // « #/vue » : vue de la console sans menu ; « /chemin » : page servie telle quelle (ex. documentation de l'API)
+  const url = path.startsWith("/") ? path : `${location.pathname}${path}${path.includes("?") ? "&" : "?"}frame=1`;
   $("frame-title").textContent = title;
   $("frame-pop").href = url;
   $("frame-iframe").src = url;
@@ -283,6 +285,7 @@ async function openFinding(f, scanId = state.scanId) {
     el("h3", {}, "Objets concernés"),
     el("ul", { class: "objects" }, f.affected.slice(0, max).map((o) => el("li", {}, o))),
     f.affected.length > max ? el("p", { class: "muted" }, `et ${f.affected.length - max} autres`) : null,
+    scanId ? [el("h3", {}, "Ticket"), ticketBox(scanId, f.rule_id, f.title)] : null,
     scanId ? [el("h3", {}, "Script de correction PowerShell"), scriptBox(scanId, f.rule_id)] : null,
     f.mitre.length ? [el("h3", {}, "MITRE ATT&CK"), el("ul", { class: "objects" }, f.mitre.map((m) =>
       el("li", {}, el("a", { href: `https://attack.mitre.org/techniques/${m.technique.replace(".", "/")}/`, target: "_blank", rel: "noopener" },
@@ -1246,7 +1249,8 @@ function scheduleEditor(cron) {
 }
 
 // ---------------------------------------------------------------------------- tâches : suivi en direct
-const KIND = { scan: "Scan", test: "Test de connexion", ai: "Synthèse IA", ai_setup: "Installation du modèle IA", ai_index: "Indexation de la base de connaissances" };
+const KIND = { scan: "Scan", test: "Test de connexion", ai: "Synthèse IA", ai_setup: "Installation du modèle IA", ai_index: "Indexation de la base de connaissances",
+  ai_script: "Brouillon de script (IA)", notify: "Notifications et intégrations", ticket: "Création de ticket", integration_test: "Test d'intégration" };
 const STATUS = { queued: "En attente", running: "En cours", succeeded: "Terminé", failed: "Échec", cancelled: "Annulé" };
 const jobsState = { list: [], worker: null, timer: null, known: new Map() };
 const statusBadge = (s) => el("span", { class: `status status-${s}` }, STATUS[s] || s);
@@ -1567,6 +1571,8 @@ const EVENTS = {
   snapshot_imported: "Snapshot importé", scan_deleted: "Rapport supprimé", job_ai_setup: "Installation du modèle IA",
   job_ai_index: "Indexation de la base de connaissances", ai_settings_updated: "Réglages IA modifiés", knowledge_saved: "Document enregistré",
   knowledge_deleted: "Document supprimé", ai_question: "Question à l'analyste", ai_dataset_downloaded: "Jeu d'entraînement téléchargé",
+  integration_updated: "Intégration modifiée", job_integration_test: "Test d'intégration", job_ticket: "Ticket demandé",
+  job_ai_script: "Brouillon de script demandé", api_token_created: "Jeton d'API créé", api_token_revoked: "Jeton d'API révoqué",
 };
 async function viewAudit() {
   const list = await api("/audit?limit=500");
@@ -1641,12 +1647,17 @@ async function startApp(user, { first = false } = {}) {
   if (inFrame()) return; // le cadre ne double pas les notifications de la page principale
   pollJobs();
   watchScans();
+  pollNotifications();
 }
 async function logout() {
   try { await api("/auth/logout", { method: "POST" }); } catch { /* déjà déconnecté */ }
   state.scans = []; state.scan = null; state.scanId = null;
   jobsState.known.clear();
   clearTimeout(scansTimer);
+  clearTimeout(notifState.timer);
+  notifState.seen.clear(); notifState.first = true;
+  toggleNotifPanel(false);
+  ticketCache.clear();
   scanCache.clear();
   closeDrawer();
   $("drawer-body").replaceChildren();
@@ -2322,10 +2333,249 @@ async function openDoc(name) {
   openPanel("Base de connaissances", name || "Nouveau document", form);
 }
 
+// ---------------------------------------------------------------------------- notifications (cloche)
+const notifState = { seen: new Set(), timer: null, first: true };
+const NOTIF_ICON = { critical: "lvl-critical", warning: "lvl-high", success: "lvl-low", info: "" };
+async function pollNotifications() {
+  clearTimeout(notifState.timer);
+  if (!state.user || inFrame()) return;
+  try {
+    const n = await api("/notifications?limit=40");
+    const badge = $("notif-count");
+    badge.textContent = n.unread > 99 ? "99+" : String(n.unread);
+    badge.hidden = !n.unread;
+    // notifications du bureau pour les nouveautés, si l'onglet est en arrière-plan et l'utilisateur l'a autorisé
+    for (const item of n.items) {
+      if (!notifState.first && item.unread && !notifState.seen.has(item.id) && document.hidden
+          && "Notification" in window && Notification.permission === "granted") {
+        new Notification(`ADSentry — ${item.title}`, { body: item.body.slice(0, 200), tag: item.id });
+      }
+      notifState.seen.add(item.id);
+    }
+    notifState.first = false;
+    notifState.items = n.items;
+    if (!$("notif-panel").hidden) renderNotifPanel();
+  } catch { /* nouvel essai au prochain passage */ }
+  notifState.timer = setTimeout(pollNotifications, 30000);
+}
+function renderNotifPanel() {
+  const items = notifState.items || [];
+  const canDesktop = "Notification" in window && window.isSecureContext && Notification.permission === "default";
+  const desktop = canDesktop ? el("button", { class: "btn btn-link small", type: "button", onclick: async () => {
+    const p = await Notification.requestPermission();
+    toast(p === "granted" ? "Notifications du bureau activées" : "Notifications du bureau refusées");
+    renderNotifPanel();
+  } }, "Activer les notifications du bureau") : null;
+  $("notif-panel").replaceChildren(
+    el("div", { class: "notif-head" }, el("strong", {}, "Notifications"), desktop),
+    items.length ? el("ul", { class: "notif-list" }, items.map((i) => el("li", { class: `${i.unread ? "unread" : ""} lvl-${i.level}` },
+      el("span", { class: `dot ${NOTIF_ICON[i.level] || ""}` }),
+      el("div", {},
+        el("div", { class: "notif-title" }, i.title),
+        i.body ? el("div", { class: "notif-body" }, i.body.split("\n").slice(0, 4).join(" · ")) : null,
+        el("div", { class: "notif-meta" }, agoTime(i.at), i.link ? [" · ", el("a", { href: i.link, target: i.link.startsWith("http") ? "_blank" : null, rel: "noopener" }, "Ouvrir")] : null)))))
+      : el("p", { class: "muted small notif-empty" }, "Aucune notification pour l'instant."));
+}
+function agoTime(iso) {
+  const s = Math.max(0, Math.round((Date.now() - new Date(iso)) / 1000));
+  return s < 60 ? "à l'instant" : s < 3600 ? `il y a ${Math.round(s / 60)} min` : s < 86400 ? `il y a ${Math.round(s / 3600)} h` : fmtDateTime(iso);
+}
+function toggleNotifPanel(force) {
+  const panel = $("notif-panel");
+  const open = force ?? panel.hidden;
+  panel.hidden = !open;
+  $("notif-btn").setAttribute("aria-expanded", String(open));
+  if (open) {
+    renderNotifPanel();
+    api("/notifications/read", { method: "POST" }).then(() => { $("notif-count").hidden = true; }).catch(() => {});
+  }
+}
+
+// ---------------------------------------------------------------------------- vue : intégrations (admin)
+const SEV_SELECT = [["critical", "Critique"], ["high", "Élevé"], ["medium", "Moyen"], ["low", "Faible"], ["info", "Info"]];
+const EVENTS_FIELDS = [["events.scan_finished", "check", "Fin de scan (résumé)"], ["events.new_findings", "check", "Nouveaux constats"],
+  ["events.min_severity", "select", "à partir de la sévérité", SEV_SELECT], ["events.scan_failed", "check", "Scan en échec"]];
+const INTEGRATIONS = {
+  email: { title: "E-mail", icon: "i-mail", desc: "Résumé des scans et nouveaux constats graves par e-mail (SMTP).", fields: [
+    ["host", "text", "Serveur SMTP", "smtp.entreprise.fr"], ["port", "number", "Port"],
+    ["security", "select", "Sécurité", [["starttls", "STARTTLS"], ["ssl", "SSL/TLS"], ["none", "Aucune (réseau de confiance)"]]],
+    ["username", "text", "Identifiant"], ["sender", "text", "Expéditeur", "adsentry@entreprise.fr"],
+    ["recipients", "list", "Destinataires (séparés par des virgules)", "soc@entreprise.fr"], ...EVENTS_FIELDS] },
+  webhook: { title: "Webhook (Teams, Slack…)", icon: "i-link", desc: "Message vers un canal Teams, Slack, ou tout outil acceptant du JSON.", fields: [
+    ["url", "text", "Adresse du webhook", "https://…"], ["format", "select", "Format", [["teams", "Microsoft Teams"], ["slack", "Slack"], ["json", "JSON (générique)"]]],
+    ...EVENTS_FIELDS] },
+  syslog: { title: "SIEM — Syslog / CEF", icon: "i-siem", desc: "Constats et journal d'audit en Syslog RFC 5424 (format CEF ou JSON).", fields: [
+    ["host", "text", "Collecteur Syslog", "siem.entreprise.fr"], ["port", "number", "Port"],
+    ["protocol", "select", "Transport", [["udp", "UDP"], ["tcp", "TCP"], ["tls", "TCP + TLS"]]],
+    ["format", "select", "Format", [["cef", "CEF (ArcSight, QRadar, Sentinel…)"], ["json", "JSON"]]],
+    ["send", "select", "Constats envoyés", [["new", "Nouveaux et corrigés"], ["all", "Tous, à chaque scan"]]],
+    ["verify_tls", "check", "Vérifier le certificat TLS"], ["audit_log", "check", "Transférer aussi le journal d'audit de la console"]] },
+  splunk: { title: "SIEM — Splunk HEC", icon: "i-siem", desc: "Événements JSON vers le HTTP Event Collector de Splunk.", fields: [
+    ["url", "text", "Adresse du collecteur", "https://splunk.entreprise.fr:8088"], ["index", "text", "Index (facultatif)"],
+    ["send", "select", "Constats envoyés", [["new", "Nouveaux et corrigés"], ["all", "Tous, à chaque scan"]]],
+    ["verify_tls", "check", "Vérifier le certificat TLS"], ["audit_log", "check", "Transférer aussi le journal d'audit de la console"]] },
+  jira: { title: "Jira", icon: "i-ticket", desc: "Ticket par constat, à la demande ou automatiquement, sans doublon.", fields: [
+    ["url", "text", "Adresse de Jira", "https://entreprise.atlassian.net"],
+    ["auth", "select", "Authentification", [["basic", "Cloud : e-mail + jeton d'API"], ["bearer", "Data Center : jeton personnel"]]],
+    ["username", "text", "E-mail du compte (Cloud)"], ["project", "text", "Clé du projet", "SEC"], ["issue_type", "text", "Type de ticket", "Task"],
+    ["auto_min_severity", "select", "Création automatique", [["", "Jamais (à la demande)"], ...SEV_SELECT.map(([k, l]) => [k, `Nouveaux constats ${l.toLowerCase()} et plus`])]]] },
+  servicenow: { title: "ServiceNow", icon: "i-ticket", desc: "Incident par constat dans ServiceNow (table incident).", fields: [
+    ["url", "text", "Instance", "https://entreprise.service-now.com"], ["username", "text", "Compte d'intégration"],
+    ["assignment_group", "text", "Groupe d'affectation (facultatif)"],
+    ["auto_min_severity", "select", "Création automatique", [["", "Jamais (à la demande)"], ...SEV_SELECT.map(([k, l]) => [k, `Nouveaux constats ${l.toLowerCase()} et plus`])]]] },
+};
+const getPath = (o, p) => p.split(".").reduce((x, k) => x?.[k], o);
+function setPath(o, p, v) { const ks = p.split("."); let x = o; ks.slice(0, -1).forEach((k) => { x = x[k] ||= {}; }); x[ks.at(-1)] = v; }
+
+async function viewIntegrations() {
+  const data = await api("/integrations");
+  const s = data.settings;
+  const consoleUrl = input({ value: s.console_url || "", placeholder: `https://${location.host}` });
+  const saveGeneral = el("button", { class: "btn btn-secondary", type: "button" }, "Enregistrer");
+  saveGeneral.addEventListener("click", () => busy(saveGeneral, "…", async () => {
+    try { await api("/integrations/general", { method: "PUT", body: JSON.stringify({ config: { console_url: consoleUrl.value.trim() } }) }); toast("Adresse enregistrée"); }
+    catch (e) { toast(e.message); }
+  }));
+  const general = section("Réglages communs", "Utilisée pour les liens dans les e-mails, messages et tickets",
+    el("div", { class: "section-body inline-fields" }, field("Adresse de la console", consoleUrl), saveGeneral));
+  const cards = Object.entries(INTEGRATIONS).map(([kind, def]) => integrationCard(kind, def, s[kind], data));
+  const tokens = await tokensSection();
+  return [workerBanner(),
+    el("p", { class: "muted intro" }, "Les envois partent du planificateur (worker), seul composant autorisé à sortir du réseau de l'appliance. Mots de passe et jetons sont chiffrés et jamais réaffichés. Une intégration en erreur n'interrompt jamais un scan : l'erreur est signalée dans la cloche."),
+    general, el("div", { class: "integ-grid" }, cards), tokens];
+}
+function integrationCard(kind, def, cfg, data) {
+  const values = structuredClone(cfg);
+  const st = data.status[kind];
+  const inputs = [];
+  const enabled = check("Activée", cfg.enabled);
+  const body = el("div", { class: "integ-fields" });
+  for (const [path, type, label, extra] of def.fields) {
+    let ctl;
+    const cur = getPath(values, path);
+    if (type === "check") { const c = check(label, !!cur); ctl = c.node; inputs.push([path, () => c.box.checked]); body.append(ctl); continue; }
+    if (type === "select") {
+      ctl = el("select", {}, extra.map(([v, l]) => el("option", { value: v, selected: (cur ?? "") === v }, l)));
+      inputs.push([path, () => ctl.value || null]);
+    } else if (type === "number") {
+      ctl = el("input", { type: "number", value: cur ?? "" });
+      inputs.push([path, () => Number(ctl.value)]);
+    } else if (type === "list") {
+      ctl = input({ value: (cur || []).join(", "), placeholder: extra || "" });
+      inputs.push([path, () => ctl.value.split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean)]);
+    } else {
+      ctl = input({ value: cur ?? "", placeholder: extra || "" });
+      inputs.push([path, () => ctl.value.trim()]);
+    }
+    body.append(field(label, ctl));
+  }
+  let secret = null;
+  if (data.secret_labels[kind]) {
+    secret = el("input", { type: "password", autocomplete: "new-password", placeholder: data.secrets[kind] ? "Enregistré — laisser vide pour conserver" : "" });
+    body.append(field(data.secret_labels[kind].replace(/^./, (c) => c.toUpperCase()), secret, kind === "webhook" ? "Facultatif : à la place de l'adresse si elle contient un secret" : null));
+  }
+  const err = formError();
+  const save = el("button", { class: "btn btn-primary", type: "button" }, "Enregistrer");
+  const test = el("button", { class: "btn btn-secondary", type: "button", disabled: !cfg.enabled }, "Tester");
+  save.addEventListener("click", () => busy(save, "Enregistrement…", async () => {
+    showError(err, "");
+    const config = { enabled: enabled.box.checked };
+    for (const [path, get] of inputs) setPath(config, path, get());
+    if (config.events) config.events = { ...cfg.events, ...config.events };
+    try {
+      await api(`/integrations/${kind}`, { method: "PUT", body: JSON.stringify({ config, secret: secret?.value || null }) });
+      toast(`${def.title} : réglages enregistrés`);
+      softRender();
+    } catch (e) { showError(err, e.message); }
+  }));
+  test.addEventListener("click", () => busy(test, "Test…", async () => {
+    try {
+      const job = await api(`/integrations/${kind}/test`, { method: "POST" });
+      for (let i = 0; i < 40; i++) {
+        await new Promise((r) => setTimeout(r, 1500));
+        const j = await api(`/jobs/${job.id}`);
+        if (!j.active) { toast(j.status === "succeeded" ? `${def.title} : test réussi` : `${def.title} : ${j.error}`); softRender(); return; }
+      }
+      toast("Le test est toujours en cours (planificateur occupé ?)");
+    } catch (e) { toast(e.message); }
+  }));
+  const status = st ? el("p", { class: `integ-status ${st.ok ? "ok" : "ko"}` }, st.ok ? "✓ " : "✗ ", st.detail, el("span", { class: "muted" }, ` · ${agoTime(st.at)}`)) : null;
+  return el("section", { class: `section integ-card${cfg.enabled ? " on" : ""}` },
+    el("div", { class: "integ-head" },
+      el("span", { class: "integ-icon" }, svg("svg", {}, svg("use", { href: `#${def.icon}` }))),
+      el("div", {}, el("h2", {}, def.title), el("p", { class: "muted small" }, def.desc)),
+      el("label", { class: "switch", title: "Activer ou désactiver" }, enabled.box, el("span", { class: "slider" }))),
+    el("div", { class: "section-body" }, body, status, err, el("div", { class: "actions" }, save, test)));
+}
+async function tokensSection() {
+  const list = await api("/tokens");
+  const name = input({ placeholder: "Ex. SIEM lecture", maxlength: 60 });
+  const role = el("select", {}, el("option", { value: "viewer" }, "Lecteur"), el("option", { value: "admin" }, "Administrateur"));
+  const days = el("select", {}, [["30", "30 jours"], ["90", "90 jours"], ["365", "1 an"], ["", "Sans expiration"]].map(([v, l]) => el("option", { value: v, selected: v === "90" }, l)));
+  const create = el("button", { class: "btn btn-primary", type: "button" }, "Créer un jeton");
+  const reveal = el("div");
+  create.addEventListener("click", () => busy(create, "…", async () => {
+    try {
+      const t = await api("/tokens", { method: "POST", body: JSON.stringify({ name: name.value, role: role.value, days: days.value ? +days.value : null }) });
+      const code = el("code", { class: "token-value" }, t.token);
+      reveal.replaceChildren(el("div", { class: "banner" }, el("strong", {}, "Copiez ce jeton maintenant : il ne sera plus jamais affiché. "),
+        code, " ", el("button", { class: "btn btn-link", type: "button", onclick: () => copyText(t.token, code) }, "Copier"),
+        el("div", { class: "small muted" }, "Utilisation : en-tête « Authorization: Bearer <jeton> »")));
+      name.value = "";
+      const fresh = await tokensSection();
+      $("tokens-table").replaceWith(fresh.querySelector("#tokens-table"));
+    } catch (e) { toast(e.message); }
+  }));
+  const table = el("div", { class: "table-wrap", id: "tokens-table" }, list.length ? el("table", { class: "data" },
+    el("thead", {}, el("tr", {}, el("th", {}, "Nom"), el("th", {}, "Rôle"), el("th", { class: "hide-sm" }, "Créé par"), el("th", { class: "hide-sm" }, "Dernière utilisation"), el("th", {}, "Expire"), el("th", {}, ""))),
+    el("tbody", {}, list.map((t) => el("tr", {}, el("td", {}, el("strong", {}, t.name), el("div", { class: "rule-id small" }, `${t.prefix}…`)),
+      el("td", {}, ROLES[t.role]), el("td", { class: "hide-sm" }, t.created_by), el("td", { class: "hide-sm" }, t.last_used ? agoTime(t.last_used) : "Jamais"),
+      el("td", {}, t.expires_at ? fmtDate(t.expires_at) : "Jamais"),
+      el("td", { class: "num" }, el("button", { class: "btn btn-link danger", type: "button", onclick: async () => {
+        if (!confirm(`Révoquer le jeton « ${t.name} » ? Les outils qui l'utilisent n'auront plus accès.`)) return;
+        try { await api(`/tokens/${t.id}`, { method: "DELETE" }); toast("Jeton révoqué"); softRender(); } catch (e) { toast(e.message); }
+      } }, "Révoquer")))))) : el("p", { class: "muted section-body" }, "Aucun jeton : la console utilise votre session."));
+  const docs = el("button", { class: "btn btn-secondary", type: "button", onclick: () => openFrame("/api/docs", "Documentation de l'API (Swagger)") }, "Documentation de l'API (Swagger)");
+  return section("API et jetons d'accès", "Pour un SIEM qui interroge l'API, des scripts ou d'autres outils",
+    el("div", { class: "section-body" }, el("div", { class: "inline-fields" }, name, role, days, create, docs), reveal), table);
+}
+
+// ---------------------------------------------------------------------------- ticket dans la fiche d'un constat
+const ticketCache = new Map();
+function ticketBox(scanId, ruleId, title) {
+  const box = el("div", { class: "ticket-box" });
+  const render = async (force) => {
+    if (force || !ticketCache.has(scanId)) ticketCache.set(scanId, await api(`/scans/${encodeURIComponent(scanId)}/tickets`));
+    const { tickets, system } = ticketCache.get(scanId);
+    const t = tickets[ruleId];
+    const label = { jira: "Jira", servicenow: "ServiceNow" };
+    if (t) { box.replaceChildren(el("span", { class: "pill lvl-low" }, `${label[t.system]} ${t.key}`), " ", el("a", { href: t.url, target: "_blank", rel: "noopener" }, "Ouvrir le ticket")); return; }
+    if (!system) { box.replaceChildren(el("span", { class: "muted small" }, state.user?.role === "admin" ? "Aucun outil de tickets configuré (Administration > Intégrations)." : "Aucun ticket.")); return; }
+    if (state.user?.role !== "admin") { box.replaceChildren(el("span", { class: "muted small" }, "Aucun ticket pour ce constat.")); return; }
+    const b = el("button", { class: "btn btn-secondary", type: "button" }, `Créer un ticket ${label[system]}`);
+    b.addEventListener("click", () => busy(b, "Création…", async () => {
+      try {
+        const job = await api(`/scans/${encodeURIComponent(scanId)}/tickets/${encodeURIComponent(ruleId)}`, { method: "POST" });
+        for (let i = 0; i < 40; i++) {
+          await new Promise((r) => setTimeout(r, 1500));
+          const j = await api(`/jobs/${job.id}`);
+          if (!j.active) {
+            if (j.status === "succeeded") { toast(`Ticket ${j.result.key} créé`); await render(true); } else toast(`Ticket non créé : ${j.error}`);
+            return;
+          }
+        }
+      } catch (e) { toast(e.message); }
+    }));
+    box.replaceChildren(b);
+  };
+  render(false).catch((e) => box.replaceChildren(el("span", { class: "note small" }, e.message)));
+  return box;
+}
+
 // ---------------------------------------------------------------------------- routeur
 const RENDER = { dashboard: viewDashboard, maturity: viewMaturity, compare: viewCompare, overview: viewOverview,
   findings: viewFindings, pki: viewPki, entra: viewEntra, mitre: viewMitre, report: viewReport, scans: viewScans, rules: viewRules,
-  targets: viewTargets, jobs: viewJobs, users: viewUsers, audit: viewAudit, help: viewHelp, ai: viewAi, topology: viewTopology };
+  targets: viewTargets, jobs: viewJobs, users: viewUsers, audit: viewAudit, help: viewHelp, ai: viewAi, topology: viewTopology, integrations: viewIntegrations };
 
 function currentView() {
   const path = (location.hash.slice(2) || "dashboard").split("?")[0];
@@ -2382,6 +2632,18 @@ $("menu-btn").addEventListener("click", openSidebar);
 $("scrim").addEventListener("click", closeSidebar);
 $("drawer-close").addEventListener("click", closeDrawer);
 $("drawer-back").addEventListener("click", drawerBack);
+function syncThemeIcon() {
+  $("theme-btn").querySelector("use").setAttribute("href", document.documentElement.dataset.theme === "dark" ? "#i-sun" : "#i-moon");
+}
+$("theme-btn").addEventListener("click", () => {
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem("adsentry.theme", next);
+  syncThemeIcon();
+});
+syncThemeIcon();
+$("notif-btn").addEventListener("click", (e) => { e.stopPropagation(); toggleNotifPanel(); });
+document.addEventListener("click", (e) => { if (!$("notif-panel").hidden && !e.target.closest("#notif-panel")) toggleNotifPanel(false); });
 $("frame-close").addEventListener("click", closeFrame);
 $("frame-modal").addEventListener("click", (e) => { if (e.target.id === "frame-modal") closeFrame(); });
 document.addEventListener("keydown", (e) => {
