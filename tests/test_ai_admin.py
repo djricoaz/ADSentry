@@ -181,18 +181,18 @@ def test_knowledge_crud_and_index(env):
     assert env.admin.put("/api/ai/knowledge/vide.md", json={"content": "  "}).status_code == 400
     r = env.admin.put("/api/ai/knowledge/tier0.md", json={"content": doc})
     assert r.status_code == 200 and r.json()["index"]["stale"] is True
-    assert env.admin.get("/api/ai/knowledge").json()[0] == {
-        **env.admin.get("/api/ai/knowledge").json()[0],
-        "name": "tier0.md",
-        "sections": 1,
-    }
+    # tier0.md (document par défaut) est remplacé par celui de l'administrateur
+    tier0 = next(d for d in env.admin.get("/api/ai/knowledge").json() if d["name"] == "tier0.md")
+    assert tier0["sections"] == 1
     assert env.admin.get("/api/ai/knowledge/tier0.md").json()["content"] == doc
 
     env.admin.post("/api/ai/index")
     done = _run_next_job(env)
     assert done.status == "succeeded", done.error
     idx = env.admin.get("/api/ai/status").json()["index"]
-    assert idx["built"] and not idx["stale"] and idx["documents"] == 1 and idx["chunks"] > 200  # catalogue + doc
+    assert (
+        idx["built"] and not idx["stale"] and idx["documents"] == 3 and idx["chunks"] > 200
+    )  # catalogue + 3 documents
 
     assert env.admin.delete("/api/ai/knowledge/tier0.md").json()["index"]["stale"] is True
     assert env.admin.get("/api/ai/knowledge/tier0.md").status_code == 404
@@ -223,3 +223,32 @@ def test_ask_and_dataset(env):
     lines = [json.loads(x) for x in r.text.splitlines()]
     assert len(lines) == 12 and lines[0]["messages"][2]["role"] == "assistant"
     assert "attachment" in r.headers["content-disposition"]
+
+
+def test_default_knowledge_installed_once(env):
+    docs = {d["name"] for d in env.admin.get("/api/ai/knowledge").json()}
+    assert docs == {"tier0.md", "procedures-remediation.md", "comptes-de-service.md"}
+    assert "[équipe ou personne]" in env.admin.get("/api/ai/knowledge/tier0.md").json()["content"]
+    # un document supprimé ne revient pas, un document modifié n'est pas écrasé
+    assert env.admin.delete("/api/ai/knowledge/tier0.md").status_code == 200
+    env.admin.put("/api/ai/knowledge/comptes-de-service.md", json={"content": "## Maison\nRègle interne.\n"})
+    again = {d["name"] for d in env.admin.get("/api/ai/knowledge").json()}
+    assert again == {"procedures-remediation.md", "comptes-de-service.md"}
+    assert env.admin.get("/api/ai/knowledge/comptes-de-service.md").json()["content"] == "## Maison\nRègle interne.\n"
+    assert env.ai.ensure_default_knowledge() == []
+
+
+def test_existing_document_not_overwritten(tmp_path, monkeypatch):
+    import importlib
+
+    monkeypatch.setenv("ADSENTRY_STATE", str(tmp_path))
+    import adsentry.ai.admin as ai_admin
+    import adsentry.appliance.config as config
+
+    importlib.reload(config)
+    importlib.reload(ai_admin)
+    (tmp_path / "knowledge").mkdir()
+    (tmp_path / "knowledge" / "tier0.md").write_text("## À moi\n", encoding="utf-8")
+    added = ai_admin.ensure_default_knowledge()
+    assert "tier0.md" not in added and (tmp_path / "knowledge" / "tier0.md").read_text(encoding="utf-8") == "## À moi\n"
+    assert "comptes-de-service.md" in added
