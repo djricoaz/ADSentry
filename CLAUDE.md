@@ -71,7 +71,8 @@ ruff check src tests && ruff format src tests
 adsentry scan tests/fixtures/lab_snapshot.json  # démo sans AD
 adsentry navigator result.json                  # couche ATT&CK Navigator
 adsentry explain result.json                    # analyse IA (Ollama requis)
-ADSENTRY_WEB_DIR=appliance/web adsentry serve   # API + tableau de bord en local
+adsentry serve --worker --web appliance/web     # console + exécution des scans en local
+adsentry user add <compte> --role admin|viewer  # comptes de la console
 docker compose -f appliance/docker-compose.yml config   # valider la pile de l'appliance
 ```
 

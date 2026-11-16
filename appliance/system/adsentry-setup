@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Assistant de premier démarrage de l'appliance ADSentry (console ou SSH, en root).
-# Configure : nom d'hôte, réseau, DNS (vers les DC), NTP, compte web, TLS, cible AD/Entra, modèle IA.
+# Configure : nom d'hôte, réseau, DNS (vers les DC), NTP, compte administrateur web, TLS, modèle IA.
+# Les cibles d'audit (AD, Entra ID), les scans et les autres comptes se gèrent ensuite dans la console web.
 set -euo pipefail
 
 ENV_FILE=/opt/adsentry/.env
@@ -36,10 +37,9 @@ for s in $NTP_SERVERS; do echo "server $s iburst" >> /etc/chrony/sources.d/adsen
 systemctl restart systemd-networkd systemd-resolved chrony || true
 
 # --- Accès web -----------------------------------------------------------------
-ADMIN_USER=$(ask "Identifiant web administrateur" "admin")
-ADMIN_PWD=$(ask_secret "Mot de passe web (14 caractères minimum)")
-[[ ${#ADMIN_PWD} -ge 14 ]] || { echo "Mot de passe trop court"; exit 1; }
-ADMIN_HASH=$(docker run --rm caddy:2 caddy hash-password --plaintext "$ADMIN_PWD")
+ADMIN_USER=$(ask "Identifiant de l'administrateur de la console" "admin")
+ADMIN_PWD=$(ask_secret "Mot de passe (12 caractères minimum, 3 types de caractères)")
+[[ ${#ADMIN_PWD} -ge 12 ]] || { echo "Mot de passe trop court"; exit 1; }
 if [[ $(ask "Certificat TLS fourni par votre PKI ? (o/n)" "n") == "o" ]]; then
   echo "Copiez cert.pem et key.pem dans $CONF/tls/ puis appuyez sur Entrée"; read -r
   TLS="$CONF/tls/cert.pem $CONF/tls/key.pem"
@@ -54,8 +54,6 @@ OLLAMA_MEM=$(( MEM_GB > 12 ? MEM_GB - 4 : 6 ))
 
 cat > "$ENV_FILE" <<EOF
 ADSENTRY_HOSTNAME=$HOSTNAME_FQDN
-ADSENTRY_ADMIN_USER=$ADMIN_USER
-ADSENTRY_ADMIN_HASH='$ADMIN_HASH'
 ADSENTRY_TLS=$TLS
 ADSENTRY_BASE_MODEL=$MODEL
 OLLAMA_MEMORY=${OLLAMA_MEM}g
@@ -70,40 +68,20 @@ if [[ ! -f $CONF/master.key ]]; then
   chown root:10001 "$CONF/master.key" && chmod 440 "$CONF/master.key"
 fi
 
-# --- Cible d'audit ---------------------------------------------------------------
-if [[ $(ask "Déclarer maintenant un domaine AD à auditer ? (o/n)" "o") == "o" ]]; then
-  NAME=$(ask "Nom court de la cible" "corp")
-  DOMAIN=$(ask "Domaine DNS AD")
-  DC=$(ask "Contrôleur de domaine" "$(echo "$DNS_SERVERS" | awk '{print $1}')")
-  AUDIT_USER=$(ask "Compte d'audit (utilisateur standard, sans privilège)" "svc-adsentry")
-  AUDIT_PWD=$(ask_secret "Mot de passe du compte d'audit")
-  docker compose -f /opt/adsentry/appliance/docker-compose.yml --env-file "$ENV_FILE" run --rm --no-deps \
-    -e ADSENTRY_SECRET_VALUE="$AUDIT_PWD" worker python -c \
-    "import os; from adsentry.appliance.config import SecretStore; SecretStore().set('$NAME-ad', os.environ['ADSENTRY_SECRET_VALUE'])"
-  cat > "$CONF/targets.yaml" <<EOF
-targets:
-  - name: $NAME
-    schedule: "17 2 * * *"
-    ai_analysis: true
-    ad:
-      domain: $DOMAIN
-      dc: $DC
-      username: $AUDIT_USER
-      password_secret: $NAME-ad
-      sysvol: true
-      probes: true
-    # entra:
-    #   tenant_id: <id du tenant>
-    #   client_id: <id de l'application d'audit>
-    #   certificate: /etc/adsentry/certs/entra.pem
-    #   thumbprint: <empreinte du certificat>
-EOF
-  chown root:10001 "$CONF/targets.yaml" && chmod 640 "$CONF/targets.yaml"
+# --- Compte administrateur de la console ----------------------------------------
+COMPOSE=(docker compose -f /opt/adsentry/appliance/docker-compose.yml --env-file "$ENV_FILE")
+if "${COMPOSE[@]}" run --rm --no-deps api adsentry user list | awk '{print $1}' | grep -qx "$ADMIN_USER"; then
+  "${COMPOSE[@]}" run --rm --no-deps -e ADSENTRY_USER_PASSWORD="$ADMIN_PWD" api adsentry user passwd "$ADMIN_USER"
+else
+  "${COMPOSE[@]}" run --rm --no-deps -e ADSENTRY_USER_PASSWORD="$ADMIN_PWD" api \
+    adsentry user add "$ADMIN_USER" --role admin --name "Administrateur"
 fi
+unset ADMIN_PWD
 
 systemctl enable --now adsentry.service
 echo "Téléchargement des modèles IA (plusieurs minutes)…"
 docker compose -f /opt/adsentry/appliance/docker-compose.yml --env-file "$ENV_FILE" --profile init run --rm ollama-init
 echo
-echo "Terminé. Interface : https://$HOSTNAME_FQDN  (identifiant : $ADMIN_USER)"
-echo "Premier scan immédiat : sudo docker compose -f /opt/adsentry/appliance/docker-compose.yml exec worker adsentry run <cible>"
+echo "Terminé. Console : https://$HOSTNAME_FQDN  (identifiant : $ADMIN_USER)"
+echo "Ensuite, dans la console : Administration > Cibles d'audit > Ajouter une cible, puis « Lancer le scan »."
+echo "Comptes en lecture seule : Administration > Comptes et rôles (rôle « Lecteur »)."

@@ -95,6 +95,7 @@ EOF
 cat > /etc/audit/rules.d/adsentry.rules <<'EOF'
 -w /etc/adsentry/ -p wa -k adsentry-config
 -w /var/lib/adsentry/secrets.json -p rwa -k adsentry-secrets
+-w /var/lib/adsentry/users.json -p wa -k adsentry-users
 -w /etc/docker/ -p wa -k docker-config
 EOF
 

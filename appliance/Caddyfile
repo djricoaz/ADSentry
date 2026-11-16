@@ -13,10 +13,7 @@ http://{$ADSENTRY_HOSTNAME} {
 	# ADSENTRY_TLS = « internal » (AC interne Caddy, par défaut) ou « /etc/adsentry/tls/cert.pem /etc/adsentry/tls/key.pem »
 	tls {$ADSENTRY_TLS}
 
-	# Authentification de base en attendant l'OIDC (Entra ID) prévu en phase 4
-	basic_auth {
-		{$ADSENTRY_ADMIN_USER} {$ADSENTRY_ADMIN_HASH}
-	}
+	# Authentification : comptes et rôles gérés par l'application (session HttpOnly), cf. docs/APPLIANCE.md
 
 	header {
 		Strict-Transport-Security "max-age=31536000"

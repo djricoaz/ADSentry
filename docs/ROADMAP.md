@@ -63,10 +63,16 @@ Objectif : prouver que la collecte produit un Snapshot juste sur un vrai domaine
 
 ## Phase 4 — Dashboard complet et sécurité de l'appliance
 
-- [ ] Export PDF du tableau de bord et des comparaisons ; objectifs de maturité par périmètre
-- [ ] **Authentification OIDC Entra ID** + rôles (lecteur, analyste, administrateur) à la place du basic auth
+- [x] Tableau de bord interactif : synthèse en langage clair, KPI cliquables avec tendances et aide contextuelle,
+      filtre de période (KPI recalculés), graphiques cliquables, priorités d'action, suivi des corrections,
+      mise à jour automatique, impression / PDF, export CSV des constats, guide de lecture pour les lecteurs
+- [ ] Export PDF des comparaisons ; objectifs de maturité par périmètre
+- [x] Comptes locaux et rôles **administrateur / lecteur** à la place du basic auth ; sessions, verrouillage,
+      protection CSRF, journal d'audit de la console, assistant de premier démarrage (jeton d'installation)
+- [ ] **Authentification OIDC Entra ID** + rôle intermédiaire « analyste »
 - [ ] SQLite/PostgreSQL au lieu des fichiers JSON ; historique et tendances
-- [ ] Gestion des cibles et des secrets depuis l'interface ; lancement de scan avec progression
+- [x] Gestion des cibles et des secrets depuis l'interface ; test de connexion ; lancement de scan avec progression
+      (file de tâches API → worker) ; planification ; synthèse IA en tâche de fond
 - [ ] Heatmap ATT&CK (tactiques lues depuis le STIX), graphe des chemins d'attaque
 - [ ] Chat « analyste IA » contextualisé sur un constat
 

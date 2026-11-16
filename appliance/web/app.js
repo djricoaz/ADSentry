@@ -33,11 +33,16 @@ const VIEWS = {
   entra: { title: "Entra ID", group: "scan" },
   mitre: { title: "MITRE ATT&CK", group: "scan" },
   report: { title: "Synthèse", group: "scan" },
-  scans: { title: "Historique des scans", group: "admin" },
-  rules: { title: "Catalogue de règles", group: "admin" },
+  scans: { title: "Historique des scans", group: "ref" },
+  rules: { title: "Catalogue de règles", group: "ref" },
+  help: { title: "Guide de lecture", group: "ref" },
+  targets: { title: "Cibles d'audit", group: "admin", admin: true },
+  jobs: { title: "Tâches", group: "admin", admin: true },
+  users: { title: "Comptes et rôles", group: "admin", admin: true },
+  audit: { title: "Journal d'audit", group: "admin", admin: true },
 };
 
-const state = { scans: [], scanId: null, scan: null, domain: null, rules: null, mitre: null, filters: {} };
+const state = { scans: [], scanId: null, scan: null, domain: null, rules: null, mitre: null, filters: {}, user: null, minPassword: 12, period: "" };
 const $ = (id) => document.getElementById(id);
 
 // ---------------------------------------------------------------------------- utilitaires
@@ -63,8 +68,14 @@ function svg(tag, attrs = {}, ...children) {
   for (const c of children.flat()) if (c) node.append(c instanceof Node ? c : document.createTextNode(String(c)));
   return node;
 }
-async function api(path, options) {
-  const r = await fetch(`/api${path}`, options);
+async function api(path, options = {}) {
+  const headers = { "X-ADSentry": "1", ...(options.headers || {}) };
+  if (typeof options.body === "string") headers["Content-Type"] = "application/json";
+  const r = await fetch(`/api${path}`, { credentials: "same-origin", ...options, headers });
+  if (r.status === 401 && !path.startsWith("/auth/")) {
+    showAuth("login", { message: "Votre session a expiré ; reconnectez-vous." });
+    throw new Error("Session expirée");
+  }
   if (!r.ok) {
     let msg = r.statusText;
     try { msg = (await r.json()).detail || msg; } catch { /* corps non JSON */ }
@@ -118,7 +129,7 @@ const tip = {
 // ---------------------------------------------------------------------------- graphiques SVG
 // Courbe unique (score, maturité). Pas de légende : le titre du bloc nomme la série.
 function lineChart(points, { yMin = 0, yMax = 100, ticks = [0, 25, 50, 75, 100], tickLabel = (v) => v,
-  step = false, height = 220, fmt = (v) => v, compact = false } = {}) {
+  step = false, height = 220, fmt = (v) => v, compact = false, onPick = null } = {}) {
   const W = 640, H = height, m = compact ? { t: 8, r: 12, b: 18, l: 8 } : { t: 12, r: 44, b: 26, l: 34 };
   const iw = W - m.l - m.r, ih = H - m.t - m.b;
   const x = (i) => m.l + (points.length < 2 ? iw / 2 : (i * iw) / (points.length - 1));
@@ -147,11 +158,15 @@ function lineChart(points, { yMin = 0, yMax = 100, ticks = [0, 25, 50, 75, 100],
   const cross = svg("line", { class: "cross", y1: m.t, y2: m.t + ih, style: "display:none" });
   const marker = svg("circle", { class: "dot", r: 4.5, style: "display:none" });
   root.append(cross, marker);
-  const hit = svg("rect", { class: "hit", x: m.l, y: 0, width: iw, height: H });
-  hit.addEventListener("mousemove", (evt) => {
+  const hit = svg("rect", { class: `hit${onPick ? " pickable" : ""}`, x: m.l, y: 0, width: iw, height: H });
+  const indexAt = (evt) => {
     const box = root.getBoundingClientRect();
     const px = ((evt.clientX - box.left) / box.width) * W;
-    const i = Math.max(0, Math.min(points.length - 1, Math.round(((px - m.l) / iw) * (points.length - 1))));
+    return Math.max(0, Math.min(points.length - 1, Math.round(((px - m.l) / iw) * (points.length - 1))));
+  };
+  if (onPick) hit.addEventListener("click", (evt) => { tip.hide(); onPick(points[indexAt(evt)]); });
+  hit.addEventListener("mousemove", (evt) => {
+    const i = indexAt(evt);
     const p = points[i];
     cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.style.display = "";
     marker.setAttribute("cx", x(i)); marker.setAttribute("cy", y(p.y)); marker.style.display = "";
@@ -285,55 +300,347 @@ async function refreshScans(selectId) {
 }
 
 // ---------------------------------------------------------------------------- vues : pilotage
+// ---------------------------------------------------------------------------- aides à la lecture
+const LEVELS = [
+  { min: 75, key: "critical", label: "Critique", text: "Des failles permettent probablement de prendre le contrôle du domaine. Une action immédiate est nécessaire." },
+  { min: 50, key: "high", label: "Élevé", text: "Des faiblesses importantes facilitent une attaque. Elles doivent être traitées en priorité dans les prochaines semaines." },
+  { min: 25, key: "medium", label: "Modéré", text: "Le socle est correct mais plusieurs points de configuration restent à durcir." },
+  { min: 0, key: "low", label: "Faible", text: "Peu de faiblesses détectées. Il s'agit de maintenir ce niveau dans la durée." },
+];
+const levelOf = (score) => LEVELS.find((l) => score >= l.min);
+const MATURITY_TEXT = {
+  1: "au moins un point critique reste ouvert",
+  2: "plus de point critique, mais des points élevés restent ouverts",
+  3: "seuls des points moyens ou faibles restent ouverts",
+  4: "seuls des points faibles ou informatifs restent ouverts",
+  5: "aucun constat ouvert",
+};
+const SEV_HELP = {
+  critical: "Peut mener directement à la compromission du domaine. Délai indicatif : immédiat.",
+  high: "Facilite fortement une attaque. Délai indicatif : sous 30 jours.",
+  medium: "Affaiblit la défense en profondeur. Délai indicatif : sous 90 jours.",
+  low: "Bonne pratique non appliquée. À planifier.",
+  info: "Information utile, sans risque direct.",
+};
+const KPI_HELP = {
+  score: "Note de 0 à 100 : plus elle est haute, plus le risque est élevé. C'est la note du domaine d'analyse le plus exposé, car le maillon le plus faible suffit à un attaquant.",
+  maturity: "Niveau de 1 (Initial) à 5 (Optimisé), déterminé par le constat le plus grave encore ouvert.",
+  critical: "Nombre de constats critiques dans le dernier scan : ce sont les premiers à corriger.",
+  open: "Nombre de problèmes distincts détectés dans le dernier scan, toutes sévérités confondues.",
+  objects: "Total des comptes, ordinateurs, GPO, modèles de certificats… concernés par au moins un constat.",
+  rate: "Part des problèmes déjà vus sur la période qui ont disparu depuis (corrigés).",
+  mttr: "Nombre moyen de jours entre la première détection d'un problème et le scan où il a disparu.",
+};
+function help(text) {
+  return el("span", { class: "help", tabindex: "0", role: "img", "aria-label": text, "data-tip": text }, "?");
+}
+const daysAgo = (iso) => Math.max(0, Math.round((Date.now() - new Date(iso)) / 86400000));
+const agoText = (iso) => { const d = daysAgo(iso); return d === 0 ? "aujourd'hui" : d === 1 ? "hier" : `il y a ${d} jours`; };
+function sparkline(values, { invert = false } = {}) {
+  if (values.length < 2) return el("span", { class: "spark-empty" });
+  const W = 120, H = 28, min = Math.min(...values), max = Math.max(...values), span = max - min || 1;
+  const pts = values.map((v, i) => `${(i * W) / (values.length - 1)},${H - 3 - ((v - min) / span) * (H - 6)}`);
+  const trend = values.at(-1) - values[0];
+  const good = invert ? trend > 0 : trend < 0;
+  return svg("svg", { class: `spark ${trend === 0 ? "" : good ? "good" : "bad"}`, viewBox: `0 0 ${W} ${H}`, "aria-hidden": "true", preserveAspectRatio: "none" },
+    svg("polyline", { points: pts.join(" ") }));
+}
+function gauge(score) {
+  const lv = levelOf(score);
+  const r = 70, cx = 90, cy = 86, a = Math.PI * (1 - Math.min(score, 100) / 100);
+  const arc = (from, to) => {
+    const p = (t) => [cx + r * Math.cos(Math.PI * (1 - t)), cy - r * Math.sin(Math.PI * (1 - t))];
+    const [x1, y1] = p(from), [x2, y2] = p(to);
+    return `M${x1},${y1} A${r},${r} 0 0 1 ${x2},${y2}`;
+  };
+  return el("div", { class: "gauge" }, svg("svg", { viewBox: "0 0 180 100", role: "img", "aria-label": `Score de risque ${score} sur 100, niveau ${lv.label}` },
+    svg("path", { class: "gauge-track", d: arc(0, 1) }),
+    score > 0 ? svg("path", { class: `gauge-fill sevfill-${lv.key}`, d: arc(0, Math.min(score, 100) / 100) }) : null,
+    svg("circle", { class: "gauge-needle", cx: cx + r * Math.cos(a), cy: cy - r * Math.sin(a), r: 5 })),
+  el("div", { class: "gauge-value" }, el("strong", {}, score), el("small", {}, "/100")),
+  el("div", { class: `gauge-level lvl-${lv.key}` }, `Risque ${lv.label.toLowerCase()}`));
+}
+const scanCache = new Map();
+async function getScan(id) {
+  if (state.scanId === id && state.scan) return state.scan;
+  if (!scanCache.has(id)) scanCache.set(id, await api(`/scans/${id}`));
+  return scanCache.get(id);
+}
+function goFindings(params = {}) {
+  state.filters = { q: params.q || "", category: params.category || "", severity: params.severity || "" };
+  const id = params.scan;
+  const nav = () => { location.hash = "#/findings"; };
+  if (id && id !== state.scanId) loadScan(id).then(nav); else nav();
+}
+
+// ---------------------------------------------------------------------------- vue : tableau de bord
+const PERIODS = [["", "Tout l'historique"], ["365", "12 derniers mois"], ["180", "6 derniers mois"], ["90", "3 derniers mois"], ["30", "30 derniers jours"]];
 async function viewDashboard() {
   if (!state.domain) return noScan();
-  const d = await api(`/dashboard?domain=${encodeURIComponent(state.domain)}`);
-  const k = d.kpis;
-  const tl = d.timeline;
-  const kpi = (label, value, unit, delta) => el("div", {}, el("div", { class: "k" }, label),
-    el("div", { class: "v" }, value ?? "—", unit && value !== null && value !== undefined ? el("small", {}, unit) : null), delta);
-  const band = el("section", { class: "section" }, el("div", { class: "kpis" },
-    kpi("Score de risque", k.global_score, "/100", deltaEl(k.global_score_delta)),
-    kpi("Maturité", `${k.maturity}`, `/5 ${k.maturity_label}`, deltaEl(k.maturity_delta, { lowerIsBetter: false, suffix: "niveau" })),
-    kpi("Constats critiques", k.critical, null, deltaEl(k.critical_delta)),
-    kpi("Constats ouverts", k.open, null, el("span", { class: "delta" }, `${k.resolved_total} corrigés depuis le premier scan`)),
-    kpi("Taux de correction", k.remediation_rate, " %", el("span", { class: "delta" }, `sur ${plural(k.scans, "scan", "scans")}`)),
-    kpi("Délai moyen de correction", k.mttr_days, " j", el("span", { class: "delta" },
-      k.oldest_critical_days !== null ? `Critique le plus ancien ouvert : ${k.oldest_critical_days} j` : "Aucun critique ouvert"))));
+  const d = await api(`/dashboard?domain=${encodeURIComponent(state.domain)}${state.period ? `&days=${state.period}` : ""}`);
+  const k = d.kpis, tl = d.timeline;
+  const latest = await getScan(k.last_scan_id);
+  const findings = [...latest.findings].sort(bySeverity);
+  const lv = levelOf(k.global_score);
+  const lastEvent = d.events.find((e) => !e.first);
+  const lastScores = tl.at(-1).scores;
+  const driver = Object.keys(CATS).reduce((a, c) => ((lastScores[c] ?? 0) > (lastScores[a] ?? 0) ? c : a));
+  const driverFindings = findings.filter((f) => f.category === driver);
+  // Score élevé sans constat critique ni élevé : il vient du cumul de constats de moindre gravité
+  const cumulative = lv.min >= 50 && !k.severity.critical && !k.severity.high;
+  const heroText = cumulative
+    ? `Aucune faille critique ou élevée isolée, mais le cumul de ${plural(driverFindings.length, "constat", "constats")} de moindre gravité dans « ${CATS[driver]} » porte le score à ${k.global_score}/100. Les traiter par lots fera baisser le score rapidement.`
+    : lv.text;
 
-  const scoreChart = lineChart(tl.map((t) => ({ x: t.collected_at, y: t.global_score,
-    rows: [["Score", `${t.global_score}/100`], ["Maturité", `${t.maturity} ${t.maturity_label}`], ["Constats", t.findings]] })),
-  { fmt: (v) => `${v}` });
-  const multiples = el("div", { class: "multiples" }, Object.keys(CATS).map((c) => {
-    const pts = tl.map((t) => ({ x: t.collected_at, y: t.scores[c] ?? 0, rows: [[CATS[c], `${t.scores[c] ?? 0}/100`]] }));
-    const last = pts.at(-1)?.y ?? 0, prev = pts.at(-2)?.y;
-    return el("div", {}, el("div", { class: "head" }, el("strong", {}, CATS[c]), el("span", {}, `${last}/100`)),
-      deltaEl(prev === undefined ? null : last - prev),
-      lineChart(pts, { compact: true, height: 70 }));
+  // Barre d'outils : période, impression
+  const period = el("select", { "aria-label": "Période analysée" }, PERIODS.map(([v, l]) => el("option", { value: v, selected: (state.period || "") === v }, l)));
+  period.addEventListener("change", () => { state.period = period.value; softRender(); });
+  const toolbar = el("div", { class: "dash-toolbar" },
+    el("label", { class: "field-inline" }, el("span", {}, "Période"), period),
+    el("span", { class: "muted small" }, `${plural(k.scans, "scan", "scans")} retenu(s) sur ${k.scans_total}`),
+    el("span", { class: "live", title: "Le tableau de bord se met à jour dès qu'un nouveau rapport est disponible" }, el("i"), "Mise à jour automatique"),
+    el("button", { class: "btn btn-secondary", onclick: () => window.print() }, "Imprimer / PDF"));
+
+  // Synthèse en langage clair
+  const stale = daysAgo(k.last_collected_at) > 35;
+  const facts = [
+    k.critical ? el("li", { class: "bad" }, el("strong", {}, plural(k.critical, "point critique", "points critiques")), " à traiter en priorité.")
+      : el("li", { class: "good" }, el("strong", {}, "Aucun point critique"), " dans le dernier scan."),
+    el("li", {}, `${plural(k.open, "problème détecté", "problèmes détectés")}, concernant ${plural(k.objects, "objet", "objets")} de l'annuaire.`),
+    lastEvent ? el("li", { class: lastEvent.resolved >= lastEvent.new ? "good" : "bad" },
+      `Depuis le scan précédent : ${plural(lastEvent.resolved, "problème corrigé", "problèmes corrigés")}, ${plural(lastEvent.new, "nouveau", "nouveaux")}.`)
+      : el("li", {}, "Premier scan de la période : il sert de référence pour mesurer les progrès."),
+    k.global_score ? el("li", {}, "Domaine le plus exposé : ", el("a", { href: "#/findings", onclick: (e) => { e.preventDefault(); goFindings({ category: driver, scan: k.last_scan_id }); } },
+      CATS[driver]), ` (${lastScores[driver]}/100), qui détermine le score global.`) : null,
+    el("li", {}, `Maturité ${k.maturity}/5 (${k.maturity_label}) : ${MATURITY_TEXT[k.maturity]}.`),
+  ];
+  const hero = el("section", { class: `section hero lvl-border-${lv.key}` },
+    gauge(k.global_score),
+    el("div", { class: "hero-text" },
+      el("p", { class: "eyebrow" }, `${d.domain} · dernière évaluation ${agoText(k.last_collected_at)} (${fmtDate(k.last_collected_at)})`),
+      el("h2", {}, `Niveau de risque ${lv.label.toLowerCase()}`),
+      el("p", {}, heroText),
+      el("ul", { class: "facts-list" }, facts),
+      stale ? el("p", { class: "note small" }, "Ce rapport a plus d'un mois : la situation réelle a pu évoluer. Demandez un nouveau scan à un administrateur.") : null,
+      el("div", { class: "actions" },
+        el("a", { class: "btn btn-primary", href: "#priorities", onclick: (e) => { e.preventDefault(); $("priorities")?.scrollIntoView({ behavior: "smooth" }); } }, "Voir les priorités"),
+        el("a", { class: "btn btn-secondary", href: "#/report", onclick: () => loadScan(k.last_scan_id) }, "Synthèse du dernier scan"),
+        el("a", { class: "btn btn-link", href: "#/help" }, "Comment lire ce tableau de bord ?"))));
+
+  // Indicateurs cliquables
+  const series = (fn) => tl.map(fn);
+  const tile = ({ label, value, unit, delta, helpText, spark, go, title }) => el("button", { class: "kpi", type: "button", title, onclick: go },
+    el("span", { class: "k" }, label, help(helpText)),
+    el("span", { class: "v" }, value ?? "—", unit && value !== null && value !== undefined ? el("small", {}, unit) : null),
+    el("span", { class: "kpi-foot" }, delta, spark));
+  const toLife = () => $("lifecycle")?.scrollIntoView({ behavior: "smooth" });
+  const tiles = el("section", { class: "kpi-grid", "aria-label": "Indicateurs clés" },
+    tile({ label: "Score de risque", value: k.global_score, unit: "/100", delta: deltaEl(k.global_score_delta), helpText: KPI_HELP.score,
+      spark: sparkline(series((t) => t.global_score)), go: () => { loadScan(k.last_scan_id).then(() => { location.hash = "#/overview"; }); }, title: "Ouvrir la vue d'ensemble du dernier scan" }),
+    tile({ label: "Maturité", value: k.maturity, unit: `/5 ${k.maturity_label}`, delta: deltaEl(k.maturity_delta, { lowerIsBetter: false, suffix: "niveau" }),
+      helpText: KPI_HELP.maturity, spark: sparkline(series((t) => t.maturity), { invert: true }), go: () => { location.hash = "#/maturity"; }, title: "Voir l'évolution de la maturité" }),
+    tile({ label: "Points critiques", value: k.critical, delta: deltaEl(k.critical_delta), helpText: KPI_HELP.critical,
+      spark: sparkline(series((t) => t.severity.critical)), go: () => goFindings({ severity: "critical", scan: k.last_scan_id }), title: "Lister les constats critiques" }),
+    tile({ label: "Constats ouverts", value: k.open, delta: deltaEl(tl.length > 1 ? tl.at(-1).findings - tl.at(-2).findings : null), helpText: KPI_HELP.open,
+      spark: sparkline(series((t) => t.findings)), go: () => goFindings({ scan: k.last_scan_id }), title: "Lister tous les constats" }),
+    tile({ label: "Objets concernés", value: k.objects, delta: deltaEl(tl.length > 1 ? tl.at(-1).objects - tl.at(-2).objects : null), helpText: KPI_HELP.objects,
+      spark: sparkline(series((t) => t.objects)), go: () => goFindings({ scan: k.last_scan_id }), title: "Lister les constats et leurs objets" }),
+    tile({ label: "Taux de correction", value: k.remediation_rate, unit: " %", delta: el("span", { class: "delta" }, `${k.resolved_total} corrigés`), helpText: KPI_HELP.rate,
+      spark: null, go: toLife, title: "Voir le suivi des corrections" }),
+    tile({ label: "Délai moyen de correction", value: k.mttr_days, unit: " j", helpText: KPI_HELP.mttr, spark: null, go: toLife, title: "Voir le suivi des corrections",
+      delta: el("span", { class: "delta" }, k.oldest_critical_days !== null ? `Critique le plus ancien : ${k.oldest_critical_days} j` : "Aucun critique ouvert") }));
+
+  // Répartition par sévérité (cliquable)
+  const maxSev = Math.max(1, ...SEV_ORDER.map((s) => k.severity[s] || 0));
+  const sevBars = el("div", { class: "sev-bars" }, SEV_ORDER.map((s) => el("button", { type: "button", class: "sev-bar", onclick: () => goFindings({ severity: s, scan: k.last_scan_id }),
+    title: `${SEV[s]} : ${SEV_HELP[s]}`, disabled: !k.severity[s] },
+  el("span", { class: "sev-bar-label" }, sev(s)),
+  el("span", { class: "sev-bar-track" }, el("i", { class: `sevfill-${s}`, style: `width:${(100 * (k.severity[s] || 0)) / maxSev}%` })),
+  el("span", { class: "sev-bar-n" }, k.severity[s] || 0))));
+
+  const scoreChart = lineChart(tl.map((t) => ({ x: t.collected_at, y: t.global_score, id: t.id,
+    rows: [["Score", `${t.global_score}/100 (${levelOf(t.global_score).label})`], ["Maturité", `${t.maturity} ${t.maturity_label}`], ["Constats", t.findings], ["", "Cliquer pour ouvrir"]] })),
+  { fmt: (v) => `${v}`, onPick: (p) => loadScan(p.id).then(() => { location.hash = "#/overview"; }) });
+
+  // Domaines d'analyse (cliquables)
+  const byCat = Object.fromEntries(Object.keys(CATS).map((c) => [c, findings.filter((f) => f.category === c)]));
+  const cards = el("div", { class: "cat-grid" }, Object.keys(CATS).map((c) => {
+    const pts = tl.map((t) => t.scores[c] ?? 0);
+    const last = pts.at(-1) ?? 0, prev = pts.at(-2);
+    const cl = levelOf(last), crit = byCat[c].filter((f) => f.severity === "critical").length;
+    return el("button", { type: "button", class: "cat-card", onclick: () => goFindings({ category: c, scan: k.last_scan_id }), title: `Lister les constats : ${CATS[c]}` },
+      el("span", { class: "cat-head" }, el("strong", {}, CATS[c]), el("span", { class: `pill lvl-${cl.key}` }, `${last}/100`)),
+      el("span", { class: "muted small" }, CAT_HINT[c]),
+      el("span", { class: "cat-stats" }, byCat[c].length ? `${plural(byCat[c].length, "constat", "constats")}${crit ? ` dont ${crit} critique${crit > 1 ? "s" : ""}` : ""}` : "Aucun constat",
+        deltaEl(prev === undefined ? null : last - prev)),
+      sparkline(pts));
   }));
-  const open = d.lifecycle.filter((x) => !x.resolved_at).slice(0, 10);
-  const oldest = el("div", { class: "table-wrap" }, el("table", { class: "data" },
-    el("thead", {}, el("tr", {}, el("th", {}, "Sévérité"), el("th", {}, "Constat"), el("th", { class: "num" }, "Ouvert depuis"))),
-    el("tbody", {}, open.map((x) => el("tr", {}, el("td", {}, sev(x.severity)),
-      el("td", {}, el("span", { class: "rule-id" }, x.rule_id), el("br"), x.title),
-      el("td", { class: "num" }, `${x.age_days} j`))))));
-  const changes = el("ul", { class: "events" }, d.events.slice(0, 6).map((e) => el("li", {},
-    el("span", { class: "when" }, fmtDate(e.date)), el("span", { class: "rail" }, el("i")),
-    el("div", { class: "what" }, el("strong", {}, e.first ? "Premier scan de référence" : `${e.resolved} corrigé(s), ${e.new} nouveau(x)`),
-      el("p", {}, `Score ${e.global_score}/100, maturité ${e.maturity} ${MATURITY[e.maturity]}`)))));
+
+  // Priorités d'action
+  // Sévérité d'abord, puis points, puis domaine le plus exposé (c'est lui qui fait baisser le score global)
+  const top = findings.filter((f) => f.severity !== "info")
+    .sort((a, b) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b.severity) || b.points - a.points
+      || (lastScores[b.category] ?? 0) - (lastScores[a.category] ?? 0) || b.affected.length - a.affected.length)
+    .slice(0, 6);
+  const priorities = top.length ? el("ol", { class: "priorities" }, top.map((f, i) => el("li", {},
+    el("span", { class: "rank" }, i + 1),
+    el("div", { class: "prio-body" },
+      el("div", { class: "prio-head" }, sev(f.severity), el("strong", {}, f.title)),
+      el("p", { class: "muted" }, f.description.split(/(?<=\.)\s/)[0]),
+      el("span", { class: "small muted" }, `${plural(f.affected.length, "objet concerné", "objets concernés")} · ${CATS[f.category]} · ${SEV_HELP[f.severity].split(". ")[1] || ""}`)),
+    el("button", { class: "btn btn-secondary", onclick: () => openFinding(f) }, "Comment corriger")))) :
+    emptyState("Rien à corriger en priorité", "Aucun constat de sévérité faible ou supérieure dans le dernier scan.");
+
+  // Suivi des corrections (onglets, recherche, tri)
+  const groups = {
+    open: { label: "Ouverts", list: d.lifecycle.filter((x) => !x.resolved_at) },
+    fixed: { label: "Corrigés", list: d.lifecycle.filter((x) => x.resolved_at) },
+    reopened: { label: "Réapparus", list: d.lifecycle.filter((x) => x.reopened) },
+  };
+  let tab = "open", sortKey = "severity", q = "", limit = 10;
+  const lifeBody = el("div");
+  const tabs = el("div", { class: "tabs", role: "tablist" });
+  const search = el("input", { type: "search", placeholder: "Filtrer", "aria-label": "Filtrer le suivi" });
+  search.addEventListener("input", () => { q = search.value.toLowerCase(); renderLife(); });
+  const sortSel = el("select", { "aria-label": "Trier" }, el("option", { value: "severity" }, "Trier par sévérité"), el("option", { value: "age" }, "Trier par ancienneté"), el("option", { value: "objects" }, "Trier par nombre d'objets"));
+  sortSel.addEventListener("change", () => { sortKey = sortSel.value; renderLife(); });
+  function renderLife() {
+    tabs.replaceChildren(...Object.entries(groups).map(([key, g]) => el("button", { type: "button", role: "tab", class: key === tab ? "active" : null, "aria-selected": String(key === tab),
+      onclick: () => { tab = key; limit = 10; renderLife(); } }, g.label, el("span", { class: "count" }, g.list.length))));
+    const list = groups[tab].list.filter((x) => !q || `${x.rule_id} ${x.title}`.toLowerCase().includes(q))
+      .sort((a, b) => sortKey === "age" ? b.age_days - a.age_days : sortKey === "objects" ? (b.objects || 0) - (a.objects || 0)
+        : SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b.severity) || b.age_days - a.age_days);
+    const current = new Map(findings.map((f) => [f.rule_id, f]));
+    lifeBody.replaceChildren(list.length ? el("div", { class: "table-wrap" }, el("table", { class: "data" },
+      el("thead", {}, el("tr", {}, el("th", {}, "Sévérité"), el("th", {}, "Constat"), el("th", { class: "num hide-sm" }, "Objets"),
+        el("th", { class: "hide-sm" }, "Détecté le"), el("th", { class: "num" }, tab === "fixed" ? "Corrigé le" : "Ouvert depuis"))),
+      el("tbody", {}, list.slice(0, limit).map((x) => {
+        const f = current.get(x.rule_id);
+        return el("tr", { class: f ? "clickable" : null, tabindex: f ? "0" : null, onclick: f ? () => openFinding(f) : null, onkeydown: f ? (e) => { if (e.key === "Enter") openFinding(f); } : null },
+          el("td", {}, sev(x.severity)),
+          el("td", {}, x.title, x.reopened ? el("span", { class: "pill lvl-high", title: "Corrigé puis réapparu" }, `réapparu ${x.reopened}×`) : null, el("div", { class: "rule-id small" }, x.rule_id)),
+          el("td", { class: "num hide-sm" }, x.objects ?? "—"),
+          el("td", { class: "hide-sm" }, fmtDate(x.first_seen)),
+          el("td", { class: "num" }, tab === "fixed" ? fmtDate(x.resolved_at) : `${x.age_days} j`));
+      }))), list.length > limit ? el("div", { class: "section-body more" }, el("button", { class: "btn btn-link", type: "button",
+        onclick: () => { limit += 15; renderLife(); } }, `Afficher plus (${list.length - limit} restants)`)) : null)
+      : el("div", { class: "empty" }, el("p", {}, tab === "fixed" ? "Aucune correction constatée sur la période." : tab === "reopened" ? "Aucun problème n'est réapparu après correction." : "Aucun constat ouvert.")));
+  }
+  renderLife();
+
+  const changes = el("ul", { class: "events" }, d.events.slice(0, 6).map((e, i) => {
+    const prev = d.events[i + 1];
+    return el("li", {},
+      el("span", { class: "when" }, fmtDate(e.date)), el("span", { class: "rail" }, el("i")),
+      el("div", { class: "what" }, el("strong", {}, e.first ? "Scan de référence" : `${e.resolved} corrigé(s), ${e.new} nouveau(x)`),
+        el("p", {}, `Score ${e.global_score}/100, maturité ${e.maturity} ${MATURITY[e.maturity]}`),
+        prev ? el("a", { href: `#/compare?base=${prev.id}&target=${e.id}` }, "Voir le détail des changements") : null));
+  }));
 
   return [
-    band,
+    welcomeBanner(), toolbar, hero, tiles,
     el("div", { class: "grid-2" },
-      section("Score de risque global", "0 = aucun risque détecté, 100 = risque maximal", el("div", { class: "section-body" }, scoreChart)),
-      section("Constats ouverts par sévérité", null, el("div", { class: "section-body" }, stackedBars(tl)))),
+      section("Évolution du score de risque", "Cliquez sur un point pour ouvrir le rapport de cette date", el("div", { class: "section-body" }, scoreChart)),
+      section("Constats du dernier scan par sévérité", "Cliquez pour lister les constats", el("div", { class: "section-body" }, sevBars,
+        el("div", { class: "sev-history" }, el("p", { class: "muted small" }, "Évolution sur la période"), stackedBars(tl))))),
     el("div", { style: "height:1.25rem" }),
-    section("Score par domaine d'analyse", `${tl.length} scans du ${fmtDate(tl[0]?.collected_at)} au ${fmtDate(tl.at(-1)?.collected_at)}`, multiples),
+    section("Domaines d'analyse", "Note de 0 (sain) à 100 (exposé) ; cliquez pour voir les constats du domaine", cards),
+    el("section", { class: "section", id: "priorities" },
+      el("div", { class: "section-head" }, el("div", {}, el("h2", {}, "Priorités d'action"), el("p", {}, "Les constats les plus graves du dernier scan, avec la correction recommandée")),
+        el("a", { href: "#/findings", onclick: () => goFindings({ scan: k.last_scan_id }) }, "Tous les constats")),
+      el("div", { class: "section-body" }, priorities)),
     el("div", { class: "grid-2" },
-      section("Constats ouverts les plus anciens", "Triés par sévérité puis ancienneté", oldest),
-      section("Derniers changements", null, changes, el("div", { class: "section-body" },
-        el("a", { href: "#/compare" }, "Comparer deux rapports")))),
+      el("section", { class: "section", id: "lifecycle" },
+        el("div", { class: "section-head" }, el("div", {}, el("h2", {}, "Suivi des corrections"), el("p", {}, "Cycle de vie des problèmes sur la période"))),
+        el("div", { class: "toolbar" }, tabs, search, sortSel), lifeBody),
+      section("Derniers changements", null, changes)),
   ];
+}
+
+function welcomeBanner() {
+  const key = `adsentry.welcome.${state.user?.username}`;
+  if (localStorage.getItem(key)) return null;
+  const box = el("div", { class: "welcome" },
+    el("div", {},
+      el("strong", {}, `Bienvenue ${state.user.display_name}.`),
+      el("p", {}, state.user.role === "admin"
+        ? "Ce tableau de bord résume la sécurité de vos annuaires. Les cibles, les scans et les comptes se gèrent dans la section Administration."
+        : "Ce tableau de bord résume la sécurité de l'annuaire en langage clair : niveau de risque, points à corriger en priorité et progrès réalisés. Chaque indicateur est cliquable, et le symbole « ? » en explique le sens."),
+      el("a", { href: "#/help" }, "Lire le guide (3 minutes)")),
+    el("button", { class: "icon-btn", "aria-label": "Masquer ce message", onclick: () => { localStorage.setItem(key, "1"); box.remove(); } }, svg("svg", {}, svg("use", { href: "#i-close" }))));
+  return box;
+}
+
+// ---------------------------------------------------------------------------- vue : guide de lecture
+function viewHelp() {
+  const table = (head, rows) => el("div", { class: "table-wrap" }, el("table", { class: "data" },
+    el("thead", {}, el("tr", {}, head.map((h) => el("th", {}, h)))), el("tbody", {}, rows.map((r) => el("tr", {}, r.map((c) => el("td", {}, c)))))));
+  const block = (title, ...body) => section(title, null, el("div", { class: "section-body prose" }, ...body));
+  return el("div", { class: "help-page" },
+    el("p", { class: "lead" }, "ADSentry vérifie régulièrement la configuration de l'annuaire Active Directory, de l'infrastructure de certificats (ADCS) et du tenant Entra ID, sans rien modifier. Ce guide explique comment lire les résultats."),
+    block("1. Le score de risque (0 à 100)",
+      el("p", {}, "Chaque problème détecté ajoute des points à son domaine d'analyse (plafonné à 100). Le score global est celui du domaine le plus exposé : il suffit d'un maillon faible pour qu'un attaquant progresse. ", el("strong", {}, "Plus le score est bas, mieux c'est.")),
+      table(["Score", "Niveau", "Signification"], LEVELS.map((l, i) => [`${l.min} – ${i ? LEVELS[i - 1].min - 1 : 100}`, el("span", { class: `pill lvl-${l.key}` }, l.label), l.text]))),
+    block("2. La maturité (1 à 5)",
+      el("p", {}, "La maturité résume où en est la sécurisation, selon le constat le plus grave encore ouvert. Elle progresse quand les points les plus graves sont corrigés."),
+      table(["Niveau", "Nom", "Condition"], Object.entries(MATURITY).map(([n, name]) => [n, name, MATURITY_TEXT[n].replace(/^./, (c) => c.toUpperCase())]))),
+    block("3. Les sévérités",
+      table(["Sévérité", "Ce que cela veut dire"], SEV_ORDER.map((s) => [sev(s), SEV_HELP[s]])),
+      el("p", { class: "muted small" }, "Les délais sont indicatifs ; votre politique de sécurité peut en fixer d'autres.")),
+    block("4. Les domaines d'analyse",
+      table(["Domaine", "Ce qui est vérifié"], Object.keys(CATS).map((c) => [el("strong", {}, CATS[c]), CAT_HINT[c]]))),
+    block("5. Lire un constat",
+      el("p", {}, "Cliquez sur un constat (tableau de bord, liste des constats) pour ouvrir sa fiche :"),
+      el("ul", {},
+        el("li", {}, el("strong", {}, "Risque"), " : ce qu'un attaquant pourrait faire et pourquoi c'est important."),
+        el("li", {}, el("strong", {}, "Correction"), " : l'action recommandée, à transmettre à l'équipe qui administre l'annuaire."),
+        el("li", {}, el("strong", {}, "Détection"), " : comment repérer une tentative d'exploitation (journaux, alertes)."),
+        el("li", {}, el("strong", {}, "Objets concernés"), " : les comptes, ordinateurs, GPO ou certificats en cause."),
+        el("li", {}, el("strong", {}, "MITRE ATT&CK"), " : la technique d'attaque correspondante dans le référentiel public MITRE, utile aux équipes de détection."))),
+    block("6. Suivre les progrès",
+      el("ul", {},
+        el("li", {}, el("strong", {}, "Taux de correction"), " : part des problèmes rencontrés qui ont disparu."),
+        el("li", {}, el("strong", {}, "Délai moyen de correction"), " : temps moyen entre la détection et la correction."),
+        el("li", {}, el("strong", {}, "Réapparus"), " : problèmes corrigés puis revenus, souvent le signe d'un processus à fiabiliser."),
+        el("li", {}, el("strong", {}, "Comparer des rapports"), " : liste précise de ce qui a été corrigé, ce qui est nouveau et ce qui a changé entre deux dates."))),
+    block("7. Questions fréquentes",
+      el("dl", { class: "faq" },
+        el("dt", {}, "Le score est élevé : sommes-nous attaqués ?"), el("dd", {}, "Non. Le score mesure des faiblesses de configuration, pas une attaque en cours. Il indique ce qu'un attaquant pourrait exploiter."),
+        el("dt", {}, "Pourquoi un constat n'apparaît-il pas alors que je pense le problème présent ?"), el("dd", {}, "Une donnée qui n'a pas pu être collectée n'est jamais considérée comme vulnérable. Les règles concernées sont alors indiquées comme non évaluées dans la vue d'ensemble."),
+        el("dt", {}, "Comment obtenir un rapport à jour ?"), el("dd", {}, state.user?.role === "admin" ? "Administration > Cibles d'audit > Lancer le scan." : "Les scans sont lancés par les administrateurs de l'appliance, à la demande ou selon une planification. Le tableau de bord se met à jour seul dès qu'un nouveau rapport est disponible."),
+        el("dt", {}, "Puis-je partager un rapport ?"), el("dd", {}, "Oui : « Imprimer / PDF » sur le tableau de bord, ou « Exporter (CSV) » dans la liste des constats. Ces documents décrivent des faiblesses de sécurité : diffusez-les avec précaution."))));
+}
+
+// ---------------------------------------------------------------------------- nouveaux rapports (tous les rôles)
+let scansTimer = null;
+async function watchScans() {
+  clearTimeout(scansTimer);
+  if (!state.user) return;
+  try {
+    const known = new Set(state.scans.map((s) => s.id));
+    const list = await api("/scans");
+    const fresh = list.filter((s) => !known.has(s.id));
+    if (fresh.length && known.size) {
+      await refreshScans();
+      toast(`Nouveau rapport disponible : ${fresh[0].domain} (score ${fresh[0].global_score}/100)`);
+      if (["dashboard", "scans", "maturity"].includes(currentView())) softRender();
+    } else if (list.length !== state.scans.length) await refreshScans();
+  } catch { /* réessai au prochain passage */ }
+  scansTimer = setTimeout(watchScans, 60000);
+}
+
+// ---------------------------------------------------------------------------- export CSV des constats
+function exportCsv(list, scan) {
+  const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const head = ["Sévérité", "Règle", "Constat", "Catégorie", "Points", "Nombre d'objets", "Objets", "Risque", "Correction", "MITRE ATT&CK"];
+  const rows = list.map((f) => [SEV[f.severity], f.rule_id, f.title, CATS[f.category], f.points, f.affected.length,
+    f.affected.join(" ; "), f.description, f.remediation, f.mitre.map((m) => m.technique).join(" ")]);
+  const csv = "﻿" + [head, ...rows].map((r) => r.map(esc).join(";")).join("\r\n");
+  const a = el("a", { href: URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })),
+    download: `adsentry-${scan.domain.replace(/[^a-z0-9.-]+/gi, "_")}-${scan.collected_at.slice(0, 10)}.csv` });
+  document.body.append(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
 
 async function viewMaturity() {
@@ -420,8 +727,13 @@ async function viewCompare(params) {
 
 // ---------------------------------------------------------------------------- vues : résultats du scan
 function noScan() {
-  return emptyState("Aucun scan disponible",
-    "Déclarez une cible dans /etc/adsentry/targets.yaml puis lancez « adsentry run <cible> », ou importez un snapshot JSON.");
+  if (state.user?.role === "admin") {
+    return emptyState("Aucun scan disponible",
+      "Déclarez un domaine ou un tenant dans « Cibles d'audit » puis lancez le scan, ou importez un snapshot JSON.",
+      el("a", { class: "btn btn-primary", href: "#/targets" }, "Gérer les cibles d'audit"));
+  }
+  return emptyState("Aucune évaluation disponible",
+    "Aucun rapport n'a encore été produit. Un administrateur de l'appliance doit lancer un premier scan.");
 }
 
 async function viewOverview() {
@@ -486,12 +798,18 @@ function viewFindings() {
     SEV_ORDER.map((k) => el("option", { value: k, selected: f.severity === k }, SEV[k])));
   const count = el("span", { class: "result-count" });
   const holder = el("div");
+  let current = [];
+  const reset = el("button", { class: "btn btn-link", type: "button" }, "Réinitialiser");
+  reset.addEventListener("click", () => { search.value = ""; cat.value = ""; sv.value = ""; render(); });
+  const csv = el("button", { class: "btn btn-secondary", type: "button", onclick: () => exportCsv(current, s) }, "Exporter (CSV)");
   const render = () => {
     state.filters = { q: search.value, category: cat.value, severity: sv.value };
+    reset.hidden = !(search.value || cat.value || sv.value);
     const q = search.value.toLowerCase();
     const list = s.findings.filter((x) => (!cat.value || x.category === cat.value) && (!sv.value || x.severity === sv.value))
       .filter((x) => !q || `${x.rule_id} ${x.title} ${x.affected.join(" ")} ${x.mitre.map((m) => m.technique).join(" ")}`.toLowerCase().includes(q))
       .sort(bySeverity);
+    current = list;
     count.textContent = plural(list.length, "constat", "constats");
     holder.replaceChildren(list.length ? findingsTable(list) : el("div", { class: "empty" }, el("p", {}, "Aucun constat ne correspond à ces filtres.")));
   };
@@ -499,7 +817,10 @@ function viewFindings() {
   cat.addEventListener("change", render);
   sv.addEventListener("change", render);
   render();
-  return el("section", { class: "section" }, el("div", { class: "toolbar" }, search, cat, sv, count), holder);
+  return [
+    el("p", { class: "muted intro" }, `Rapport ${s.domain} du ${fmtDate(s.collected_at)}. Cliquez sur un constat pour lire le risque, la correction recommandée et les objets concernés.`),
+    el("section", { class: "section" }, el("div", { class: "toolbar" }, search, cat, sv, reset, count, csv), holder),
+  ];
 }
 
 function viewPki() {
@@ -581,16 +902,27 @@ async function viewReport() {
         ? el("p", { class: "note" }, `Références écartées car absentes des constats : ${a._controle_qualite.regles_inventees_retirees.join(", ")}`) : null));
     button.textContent = "Régénérer la synthèse";
   };
-  button.addEventListener("click", async () => {
+  const isAdmin = state.user?.role === "admin";
+  const pending = isAdmin && jobsState.list.find((j) => j.kind === "ai" && j.scan_id === state.scanId);
+  const waiting = () => {
     button.disabled = true;
     button.textContent = "Rédaction en cours…";
-    box.replaceChildren(el("p", { class: "muted" }, "Le modèle local rédige la synthèse à partir des constats. Comptez une à cinq minutes."));
-    try { render(await api(`/scans/${state.scanId}/ai-analysis`, { method: "POST" })); toast("Synthèse générée"); }
-    catch (e) { box.replaceChildren(el("p", { class: "note" }, `La synthèse n'a pas pu être générée : ${e.message}. Vérifiez que le service ollama est démarré.`)); button.textContent = "Générer la synthèse"; }
-    finally { button.disabled = false; }
+    box.replaceChildren(el("p", { class: "muted" }, "Le modèle local rédige la synthèse à partir des constats. Comptez une à cinq minutes ; la page se met à jour d'elle-même."));
+  };
+  button.addEventListener("click", async () => {
+    try { await api(`/scans/${state.scanId}/ai-analysis`, { method: "POST" }); waiting(); pollJobs(); }
+    catch (e) { toast(e.message); }
   });
-  try { render(await api(`/scans/${state.scanId}/ai-analysis`)); }
-  catch { box.replaceChildren(el("p", { class: "muted" }, "Aucune synthèse pour ce scan.")); }
+  if (!isAdmin) button.hidden = true;
+  if (pending?.active) waiting();
+  else {
+    try { render(await api(`/scans/${state.scanId}/ai-analysis`)); }
+    catch {
+      box.replaceChildren(pending?.status === "failed"
+        ? el("p", { class: "note" }, `La synthèse n'a pas pu être générée : ${pending.error}. Vérifiez que le service ollama est démarré.`)
+        : el("p", { class: "muted" }, isAdmin ? "Aucune synthèse pour ce scan." : "Aucune synthèse pour ce scan ; un administrateur peut la générer."));
+    }
+  }
   return el("section", { class: "section" },
     el("div", { class: "section-head" }, el("div", {}, el("h2", {}, "Synthèse de l'audit"),
       el("p", {}, "Rédigée sur l'appliance par le modèle local à partir des seuls constats ; aucune donnée ne sort.")), button),
@@ -611,8 +943,20 @@ function viewScans() {
         el("td", {}, s.domain), el("td", { class: "num" }, s.global_score), el("td", { class: "num" }, s.findings),
         el("td", { class: "hide-sm" }, s.ai ? "Disponible" : el("span", { class: "muted" }, "—")),
         el("td", { class: "num" }, el("a", { href: "#/overview", onclick: () => loadScan(s.id) }, "Ouvrir"),
-          prev ? [" ", el("a", { href: `#/compare?base=${prev.id}&target=${s.id}`, onclick: () => { state.domain = s.domain; } }, "Comparer")] : null));
+          prev ? [" ", el("a", { href: `#/compare?base=${prev.id}&target=${s.id}`, onclick: () => { state.domain = s.domain; } }, "Comparer")] : null,
+          state.user?.role === "admin" ? [" ", el("button", { class: "btn btn-link danger", onclick: () => deleteScan(s) }, "Supprimer")] : null));
     })))));
+}
+
+async function deleteScan(s) {
+  if (!confirm(`Supprimer le rapport ${s.domain} du ${fmtDate(s.collected_at)} ? Cette action est définitive.`)) return;
+  try {
+    await api(`/scans/${s.id}`, { method: "DELETE" });
+    if (state.scanId === s.id) { state.scanId = null; state.scan = null; }
+    await refreshScans();
+    toast("Rapport supprimé");
+    softRender();
+  } catch (e) { toast(e.message); }
 }
 
 async function viewRules() {
@@ -648,13 +992,521 @@ async function viewRules() {
   ];
 }
 
+// ---------------------------------------------------------------------------- formulaires
+function field(label, input, hint) {
+  const id = input.id || `f-${Math.random().toString(36).slice(2, 9)}`;
+  input.id = id;
+  return el("div", { class: "field" }, el("label", { for: id }, label), input, hint ? el("p", { class: "hint" }, hint) : null);
+}
+const input = (attrs = {}) => el("input", { type: "text", autocomplete: "off", spellcheck: "false", ...attrs });
+function check(label, checked, hint) {
+  const box = el("input", { type: "checkbox", checked });
+  return { box, node: el("label", { class: "check" }, box, el("span", {}, label, hint ? el("small", {}, hint) : null)) };
+}
+function formError() { return el("p", { class: "form-error", role: "alert", hidden: true }); }
+function showError(node, msg) { node.textContent = msg; node.hidden = !msg; }
+async function busy(btn, label, fn) {
+  const old = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = label;
+  try { return await fn(); } finally { btn.disabled = false; btn.textContent = old; }
+}
+function openPanel(kicker, title, body) {
+  $("drawer-id").textContent = kicker;
+  $("drawer-title").textContent = title;
+  $("drawer-body").replaceChildren(body);
+  $("drawer").classList.add("open");
+  $("drawer").setAttribute("aria-hidden", "false");
+  setTimeout(() => body.querySelector("input:not([disabled]), select, textarea")?.focus(), 50);
+}
+const fmtDateTime = (iso) => fmtDate(iso, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+function fmtDuration(a, b) {
+  if (!a) return "—";
+  const s = Math.max(0, Math.round(((b ? new Date(b) : new Date()) - new Date(a)) / 1000));
+  return s < 60 ? `${s} s` : s < 3600 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min`;
+}
+
+// ---------------------------------------------------------------------------- planification
+const DAYS = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
+const isNum = (v) => /^\d+$/.test(v);
+function describeCron(c) {
+  if (!c) return "Lancement manuel uniquement";
+  const [m, h, dom, mon, dow] = c.split(" ");
+  const at = isNum(m) && isNum(h) ? `${h.padStart(2, "0")}:${m.padStart(2, "0")}` : null;
+  if (at && mon === "*" && dom === "*" && dow === "*") return `Chaque jour à ${at}`;
+  if (at && mon === "*" && dom === "*" && dow === "1-5") return `Du lundi au vendredi à ${at}`;
+  if (at && mon === "*" && dom === "*" && /^[0-6]$/.test(dow)) return `Chaque ${DAYS[+dow]} à ${at}`;
+  if (at && mon === "*" && isNum(dom) && dow === "*") return `Le ${dom} de chaque mois à ${at}`;
+  return `Planification personnalisée (${c})`;
+}
+function scheduleEditor(cron) {
+  const freq = el("select", {},
+    el("option", { value: "manual" }, "Manuel (pas de planification)"), el("option", { value: "daily" }, "Chaque jour"),
+    el("option", { value: "weekdays" }, "Du lundi au vendredi"), el("option", { value: "weekly" }, "Chaque semaine"),
+    el("option", { value: "monthly" }, "Chaque mois"), el("option", { value: "custom" }, "Personnalisée (cron)"));
+  const time = el("input", { type: "time", value: "02:17", "aria-label": "Heure" });
+  const day = el("select", { "aria-label": "Jour" }, DAYS.map((d, i) => el("option", { value: i }, d)));
+  const dom = el("input", { type: "number", min: 1, max: 28, value: 1, "aria-label": "Jour du mois", class: "narrow" });
+  const custom = input({ placeholder: "17 2 * * *", "aria-label": "Expression cron" });
+  const preview = el("p", { class: "hint" });
+  const [m, h, d, , w] = (cron || "").split(" ");
+  if (!cron) freq.value = "manual";
+  else {
+    if (isNum(m) && isNum(h)) time.value = `${h.padStart(2, "0")}:${m.padStart(2, "0")}`;
+    const simple = isNum(m) && isNum(h) && cron.split(" ")[3] === "*";
+    if (simple && d === "*" && w === "*") freq.value = "daily";
+    else if (simple && d === "*" && w === "1-5") freq.value = "weekdays";
+    else if (simple && d === "*" && /^[0-6]$/.test(w)) { freq.value = "weekly"; day.value = w; }
+    else if (simple && isNum(d) && w === "*") { freq.value = "monthly"; dom.value = d; }
+    else { freq.value = "custom"; custom.value = cron; }
+  }
+  const value = () => {
+    const [hh, mm] = (time.value || "02:17").split(":").map((x) => String(+x));
+    return { manual: "", daily: `${mm} ${hh} * * *`, weekdays: `${mm} ${hh} * * 1-5`, weekly: `${mm} ${hh} * * ${day.value}`,
+      monthly: `${mm} ${hh} ${dom.value} * *`, custom: custom.value.trim() }[freq.value];
+  };
+  const sync = () => {
+    const f = freq.value;
+    time.hidden = f === "manual" || f === "custom";
+    day.hidden = f !== "weekly";
+    dom.hidden = f !== "monthly";
+    custom.hidden = f !== "custom";
+    preview.textContent = f === "custom" ? "Format : minute heure jour mois jour_semaine (heure de l'appliance)" : describeCron(value());
+  };
+  [freq, time, day, dom, custom].forEach((x) => x.addEventListener("input", sync));
+  sync();
+  return { value, node: el("div", { class: "field" }, el("label", {}, "Planification"),
+    el("div", { class: "inline-fields" }, freq, day, dom, time, custom), preview) };
+}
+
+// ---------------------------------------------------------------------------- tâches : suivi en direct
+const KIND = { scan: "Scan", test: "Test de connexion", ai: "Synthèse IA" };
+const STATUS = { queued: "En attente", running: "En cours", succeeded: "Terminé", failed: "Échec", cancelled: "Annulé" };
+const jobsState = { list: [], worker: null, timer: null, known: new Map() };
+const statusBadge = (s) => el("span", { class: `status status-${s}` }, STATUS[s] || s);
+function progressBar(job) {
+  return el("div", { class: "progress", role: "progressbar", "aria-valuemin": 0, "aria-valuemax": 100, "aria-valuenow": job.progress },
+    el("i", { style: `width:${job.status === "queued" ? 0 : job.progress}%` }));
+}
+async function pollJobs() {
+  clearTimeout(jobsState.timer);
+  if (state.user?.role !== "admin") return;
+  let data;
+  try { data = await api("/jobs?limit=100"); } catch { jobsState.timer = setTimeout(pollJobs, 10000); return; }
+  jobsState.list = data.jobs;
+  jobsState.worker = data.worker;
+  let finishedScan = false;
+  for (const j of data.jobs) {
+    const before = jobsState.known.get(j.id);
+    if (before && before !== j.status && !j.active) {
+      if (j.kind === "scan" && j.status === "succeeded") {
+        finishedScan = true;
+        toast(`Scan « ${j.target} » terminé : score ${j.result.global_score}/100, ${plural(j.result.findings, "constat", "constats")}`);
+      } else if (j.kind === "test") toast(j.status === "succeeded" ? `Connexion à « ${j.target} » réussie` : `Test de « ${j.target} » en échec`);
+      else if (j.kind === "ai" && j.status === "succeeded") toast("Synthèse IA disponible");
+      else if (j.status === "failed") toast(`${KIND[j.kind]} en échec : ${j.error || ""}`);
+    }
+    jobsState.known.set(j.id, j.status);
+  }
+  const active = data.jobs.filter((j) => j.active);
+  const pill = $("job-indicator");
+  pill.hidden = !active.length;
+  pill.querySelector("span").textContent = active.length ? `${plural(active.length, "tâche", "tâches")} en cours` : "";
+  if (finishedScan) await refreshScans();
+  const view = currentView();
+  if (["targets", "jobs"].includes(view) || (view === "report" && active.some((j) => j.kind === "ai"))) softRender();
+  if (finishedScan && ["dashboard", "scans", "overview"].includes(view)) softRender();
+  jobsState.timer = setTimeout(pollJobs, active.length || ["targets", "jobs"].includes(view) ? 2500 : 15000);
+}
+function workerBanner() {
+  const w = jobsState.worker;
+  if (!w || w.online) return null;
+  return el("div", { class: "banner" }, el("strong", {}, "Le planificateur ne répond pas. "),
+    "Les scans demandés restent en attente tant qu'il n'est pas démarré : service « worker » de l'appliance, ",
+    "ou « adsentry serve --worker » en installation simple.");
+}
+
+// ---------------------------------------------------------------------------- vue : cibles d'audit
+async function viewTargets() {
+  const [targets] = await Promise.all([api("/targets"), jobsState.worker ? null : pollJobs()]);
+  const add = el("button", { class: "btn btn-primary", onclick: () => openTargetForm() }, "Ajouter une cible");
+  const head = el("div", { class: "page-actions" },
+    el("p", { class: "muted" }, "Domaines Active Directory et tenants Entra ID audités par l'appliance. Les mots de passe, secrets et certificats sont chiffrés sur l'appliance et ne sont jamais réaffichés."),
+    add);
+  if (!targets.length) {
+    return [workerBanner(), el("section", { class: "section" }, emptyState("Aucune cible d'audit",
+      "Déclarez un domaine Active Directory (compte standard en lecture seule) et/ou un tenant Entra ID (application d'audit en lecture seule), puis lancez le premier scan.", add))];
+  }
+  return [workerBanner(), head, el("div", { class: "cards" }, targets.map(targetCard))];
+}
+function targetCard(t) {
+  const job = t.active_job, last = t.last_scan;
+  const sources = [
+    t.ad ? el("div", {}, el("span", { class: "tag" }, "Active Directory"), ` ${t.ad.domain} via ${t.ad.dc}`, el("span", { class: "muted" }, ` · ${t.ad.username}${t.ad.ldaps ? " · LDAPS" : ""}`)) : null,
+    t.entra ? el("div", {}, el("span", { class: "tag" }, "Entra ID"), ` tenant ${t.entra.tenant_id}`, el("span", { class: "muted" }, ` · ${t.entra.auth === "secret" ? "secret client" : "certificat"}`)) : null,
+  ];
+  const scanBtn = el("button", { class: "btn btn-primary", disabled: !!job }, "Lancer le scan");
+  scanBtn.addEventListener("click", () => busy(scanBtn, "Envoi…", async () => {
+    try { await api(`/targets/${t.name}/scan`, { method: "POST" }); toast(`Scan de « ${t.name} » demandé`); pollJobs(); }
+    catch (e) { toast(e.message); }
+  }));
+  const testBtn = el("button", { class: "btn btn-secondary", disabled: !!job }, "Tester la connexion");
+  testBtn.addEventListener("click", () => busy(testBtn, "Envoi…", async () => {
+    try { await api(`/targets/${t.name}/test`, { method: "POST" }); pollJobs(); } catch (e) { toast(e.message); }
+  }));
+  const del = el("button", { class: "btn btn-link danger" }, "Supprimer");
+  del.addEventListener("click", async () => {
+    if (!confirm(`Supprimer la cible « ${t.name} » et ses secrets ? Les rapports déjà produits sont conservés.`)) return;
+    try { await api(`/targets/${t.name}`, { method: "DELETE" }); toast("Cible supprimée"); softRender(); } catch (e) { toast(e.message); }
+  });
+  let lastLine;
+  if (last) {
+    const scan = last.scan_id && state.scans.find((s) => s.id === last.scan_id);
+    lastLine = el("div", {}, statusBadge(last.status), " ", fmtDateTime(last.finished_at || last.created_at),
+      last.status === "succeeded" && last.result?.global_score !== undefined ? ` · score ${last.result.global_score}/100 · ${plural(last.result.findings, "constat", "constats")}` : "",
+      last.status === "failed" ? el("div", { class: "note small" }, last.error) : null,
+      scan ? [" · ", el("a", { href: "#/overview", onclick: () => loadScan(scan.id) }, "Ouvrir le rapport")] : null);
+  } else lastLine = el("span", { class: "muted" }, "Jamais scannée");
+  const lastTest = jobsState.list.find((j) => j.target === t.name && j.kind === "test" && !j.active);
+  return el("section", { class: "section card" },
+    el("div", { class: "section-head" }, el("h2", {}, t.name),
+      el("div", { class: "actions" }, el("button", { class: "btn btn-link", onclick: () => openTargetForm(t) }, "Modifier"), del)),
+    el("div", { class: "section-body" },
+      el("div", { class: "sources" }, sources),
+      el("dl", { class: "facts" },
+        el("dt", {}, "Planification"), el("dd", {}, describeCron(t.schedule)),
+        el("dt", {}, "Synthèse IA"), el("dd", {}, t.ai_analysis ? "Générée après chaque scan" : "Sur demande"),
+        el("dt", {}, "Dernier scan"), el("dd", {}, lastLine),
+        lastTest ? [el("dt", {}, "Dernier test"), el("dd", {}, statusBadge(lastTest.status), " ", fmtDateTime(lastTest.finished_at),
+          lastTest.status === "failed" ? el("div", { class: "note small" }, lastTest.error) : null)] : null),
+      job ? el("div", { class: "job-live" },
+        el("div", { class: "job-live-head" }, el("strong", {}, `${KIND[job.kind]} — ${STATUS[job.status]}`), el("span", {}, `${job.progress} %`)),
+        progressBar(job), el("p", { class: "muted small" }, job.step)) : null,
+      el("div", { class: "actions" }, scanBtn, testBtn)));
+}
+
+function openTargetForm(t = null) {
+  const err = formError();
+  const name = input({ value: t?.name || "", disabled: !!t, placeholder: "corp", maxlength: 40, required: true });
+  // Active Directory
+  const adOn = check("Auditer un domaine Active Directory", t ? !!t.ad : true);
+  const ad = t?.ad || {};
+  const domain = input({ value: ad.domain || "", placeholder: "corp.local" });
+  const dc = input({ value: ad.dc || "", placeholder: "10.0.0.10 ou dc01.corp.local" });
+  const user = input({ value: ad.username || "", placeholder: "svc-adsentry" });
+  const pwd = el("input", { type: "password", autocomplete: "new-password",
+    placeholder: ad.password_set ? "Enregistré — laisser vide pour conserver" : "" });
+  const ldaps = check("LDAPS (636)", !!ad.ldaps, "Recommandé si le DC présente un certificat valide");
+  const sysvol = check("Lire les GPO dans SYSVOL (SMB 445)", ad.sysvol ?? true);
+  const probes = check("Sondes réseau sur les DC", ad.probes ?? true, "Signature LDAP/SMB, channel binding, services exposés");
+  const adBox = el("fieldset", { class: "sub" },
+    el("div", { class: "grid-fields" }, field("Domaine DNS", domain), field("Contrôleur de domaine", dc),
+      field("Compte d'audit", user, "Utilisateur standard, sans privilège"), field("Mot de passe", pwd)),
+    ldaps.node, sysvol.node, probes.node);
+  // Entra ID
+  const en = t?.entra || {};
+  const enOn = check("Auditer un tenant Entra ID", !!t?.entra);
+  const tenant = input({ value: en.tenant_id || "", placeholder: "00000000-0000-0000-0000-000000000000" });
+  const client = input({ value: en.client_id || "", placeholder: "ID de l'application d'audit" });
+  const authSel = el("select", {}, el("option", { value: "certificate" }, "Certificat (recommandé)"), el("option", { value: "secret" }, "Secret client"));
+  authSel.value = en.auth || "certificate";
+  let pem = null;
+  const pemFile = el("input", { type: "file", accept: ".pem,.crt,.key" });
+  pemFile.addEventListener("change", async () => { pem = pemFile.files[0] ? await pemFile.files[0].text() : null; });
+  const thumb = input({ value: en.thumbprint || "", placeholder: "Empreinte SHA-1 du certificat" });
+  const secret = el("input", { type: "password", autocomplete: "new-password", placeholder: en.client_secret_set ? "Enregistré — laisser vide pour conserver" : "" });
+  const connect = input({ value: en.connect_version || "", placeholder: "2.4.27.0 (facultatif)" });
+  const certFields = el("div", { class: "grid-fields" },
+    field("Fichier PEM (clé privée + certificat)", pemFile, en.certificate_set ? "Un certificat est enregistré ; choisir un fichier pour le remplacer" : null),
+    field("Empreinte", thumb));
+  const secretFields = el("div", { class: "grid-fields" }, field("Secret client", secret));
+  const enBox = el("fieldset", { class: "sub" },
+    el("div", { class: "grid-fields" }, field("ID du tenant", tenant), field("ID de l'application", client),
+      field("Authentification", authSel), field("Version d'Entra Connect", connect, "Non exposée par Microsoft Graph")),
+    certFields, secretFields, el("p", { class: "hint" }, "Permissions Graph en lecture seule : voir docs/ENTRA.md."));
+  const sched = scheduleEditor(t ? t.schedule : "17 2 * * *");
+  const ai = check("Générer la synthèse IA après chaque scan", !!t?.ai_analysis, "Modèle local ; 1 à 5 minutes sur CPU");
+  const sync = () => {
+    adBox.hidden = !adOn.box.checked;
+    enBox.hidden = !enOn.box.checked;
+    certFields.hidden = authSel.value !== "certificate";
+    secretFields.hidden = authSel.value !== "secret";
+  };
+  [adOn.box, enOn.box, authSel].forEach((x) => x.addEventListener("change", sync));
+  sync();
+
+  const payload = () => ({
+    name: name.value.trim(), schedule: sched.value() || null, ai_analysis: ai.box.checked,
+    ad: adOn.box.checked ? { domain: domain.value.trim(), dc: dc.value.trim(), username: user.value.trim(), password: pwd.value || null,
+      ldaps: ldaps.box.checked, sysvol: sysvol.box.checked, probes: probes.box.checked } : null,
+    entra: enOn.box.checked ? { tenant_id: tenant.value.trim(), client_id: client.value.trim(), auth: authSel.value,
+      client_secret: secret.value || null, certificate_pem: pem, thumbprint: thumb.value.trim() || null,
+      connect_version: connect.value.trim() || null } : null,
+  });
+  const save = el("button", { class: "btn btn-primary", type: "submit" }, t ? "Enregistrer" : "Créer la cible");
+  const saveTest = el("button", { class: "btn btn-secondary", type: "button" }, "Enregistrer et tester");
+  const submit = async (thenTest) => {
+    showError(err, "");
+    const body = payload();
+    try {
+      await api(t ? `/targets/${t.name}` : "/targets", { method: t ? "PUT" : "POST", body: JSON.stringify(body) });
+      if (thenTest) await api(`/targets/${body.name}/test`, { method: "POST" });
+      closeDrawer();
+      toast(thenTest ? "Cible enregistrée ; test de connexion lancé" : "Cible enregistrée");
+      pollJobs();
+      softRender();
+    } catch (e) { showError(err, e.message); }
+  };
+  const form = el("form", { class: "form", novalidate: true },
+    field("Nom de la cible", name, "Minuscules, chiffres et tirets ; sert à nommer les rapports"),
+    adOn.node, adBox, enOn.node, enBox, sched.node, ai.node, err,
+    el("div", { class: "actions" }, save, saveTest));
+  form.addEventListener("submit", (e) => { e.preventDefault(); busy(save, "Enregistrement…", () => submit(false)); });
+  saveTest.addEventListener("click", () => busy(saveTest, "Enregistrement…", () => submit(true)));
+  openPanel(t ? "Modifier la cible" : "Nouvelle cible d'audit", t ? t.name : "Ajouter une cible", form);
+}
+
+// ---------------------------------------------------------------------------- vue : tâches
+async function viewJobs() {
+  await pollJobs();
+  const list = jobsState.list;
+  if (!list.length) return [workerBanner(), el("section", { class: "section" }, emptyState("Aucune tâche", "Les scans, tests de connexion et synthèses IA lancés depuis la console apparaîtront ici avec leur avancement."))];
+  return [workerBanner(), section("Tâches récentes", "Conservées 30 jours", el("div", { class: "table-wrap" }, el("table", { class: "data" },
+    el("thead", {}, el("tr", {}, el("th", {}, "Demandée"), el("th", {}, "Tâche"), el("th", {}, "Cible"),
+      el("th", { class: "hide-sm" }, "Par"), el("th", {}, "État"), el("th", { class: "hide-sm" }, "Étape"), el("th", { class: "num hide-sm" }, "Durée"))),
+    el("tbody", {}, list.map((j) => el("tr", { class: "clickable", tabindex: "0", onclick: () => openJob(j), onkeydown: (e) => { if (e.key === "Enter") openJob(j); } },
+      el("td", {}, fmtDateTime(j.created_at)), el("td", {}, KIND[j.kind]),
+      el("td", {}, j.target || state.scans.find((s) => s.id === j.scan_id)?.domain || j.scan_id || "—"),
+      el("td", { class: "hide-sm" }, j.trigger === "schedule" ? el("span", { class: "muted" }, "Planification") : j.requested_by),
+      el("td", {}, j.active ? el("div", { class: "cell-progress" }, statusBadge(j.status), progressBar(j)) : statusBadge(j.status)),
+      el("td", { class: "hide-sm muted" }, j.status === "failed" ? j.error : j.step),
+      el("td", { class: "num hide-sm" }, fmtDuration(j.started_at, j.finished_at))))))))];
+}
+function openJob(j) {
+  const cancel = j.status === "queued" ? el("button", { class: "btn btn-secondary" }, "Annuler la tâche") : null;
+  cancel?.addEventListener("click", () => busy(cancel, "Annulation…", async () => {
+    try { await api(`/jobs/${j.id}/cancel`, { method: "POST" }); closeDrawer(); pollJobs(); } catch (e) { toast(e.message); }
+  }));
+  const scan = j.scan_id && j.kind === "scan" && state.scans.find((s) => s.id === j.scan_id);
+  openPanel(`${KIND[j.kind]} · ${j.id}`, j.target || j.scan_id || "", el("div", {},
+    el("div", { class: "kv" }, statusBadge(j.status), el("span", {}, `Demandée le ${fmtDateTime(j.created_at)}`),
+      el("span", {}, j.trigger === "schedule" ? "par la planification" : `par ${j.requested_by}`), el("span", {}, `Durée ${fmtDuration(j.started_at, j.finished_at)}`)),
+    j.active ? [el("h3", {}, j.step), progressBar(j)] : null,
+    j.error ? [el("h3", {}, "Erreur"), el("p", { class: "note" }, j.error)] : null,
+    j.kind === "test" && Object.keys(j.result || {}).length ? [el("h3", {}, "Résultat"), el("ul", { class: "plain" },
+      Object.entries(j.result).map(([k, v]) => el("li", {}, statusBadge(v.ok ? "succeeded" : "failed"), ` ${k === "ad" ? "Active Directory" : "Entra ID"} : ${v.detail}`)))] : null,
+    scan ? el("p", {}, el("a", { href: "#/overview", onclick: () => { closeDrawer(); loadScan(scan.id); } }, "Ouvrir le rapport produit")) : null,
+    el("h3", {}, "Journal"),
+    el("ol", { class: "log" }, j.log.map((l) => el("li", { class: `log-${l.level}` }, el("time", {}, new Date(l.at).toLocaleTimeString("fr-FR")), l.msg))),
+    cancel));
+}
+
+// ---------------------------------------------------------------------------- vue : comptes
+const ROLES = { admin: "Administrateur", viewer: "Lecteur" };
+async function viewUsers() {
+  const list = await api("/users");
+  const add = el("button", { class: "btn btn-primary", onclick: () => openUserForm() }, "Ajouter un compte");
+  const rows = list.map((u) => {
+    const me = u.username.toLowerCase() === state.user.username.toLowerCase();
+    const role = el("select", { "aria-label": `Rôle de ${u.username}`, disabled: me }, Object.entries(ROLES).map(([k, v]) => el("option", { value: k }, v)));
+    role.value = u.role;
+    role.addEventListener("change", async () => {
+      try { await api(`/users/${u.username}`, { method: "PATCH", body: JSON.stringify({ role: role.value }) }); toast("Rôle modifié ; les sessions du compte ont été fermées"); }
+      catch (e) { toast(e.message); role.value = u.role; }
+    });
+    const toggle = el("button", { class: "btn btn-link", disabled: me }, u.disabled ? "Réactiver" : "Désactiver");
+    toggle.addEventListener("click", async () => {
+      try { await api(`/users/${u.username}`, { method: "PATCH", body: JSON.stringify({ disabled: !u.disabled }) }); softRender(); } catch (e) { toast(e.message); }
+    });
+    const del = el("button", { class: "btn btn-link danger", disabled: me }, "Supprimer");
+    del.addEventListener("click", async () => {
+      if (!confirm(`Supprimer le compte « ${u.username} » ?`)) return;
+      try { await api(`/users/${u.username}`, { method: "DELETE" }); toast("Compte supprimé"); softRender(); } catch (e) { toast(e.message); }
+    });
+    return el("tr", { class: u.disabled ? "disabled" : null },
+      el("td", {}, el("strong", {}, u.username), me ? el("span", { class: "muted" }, " (vous)") : null, el("div", { class: "muted small" }, u.display_name)),
+      el("td", {}, role),
+      el("td", { class: "hide-sm" }, u.last_login ? fmtDateTime(u.last_login) : el("span", { class: "muted" }, "Jamais")),
+      el("td", {}, el("span", { class: `status status-${u.disabled ? "cancelled" : "succeeded"}` }, u.disabled ? "Désactivé" : "Actif")),
+      el("td", { class: "num" }, el("button", { class: "btn btn-link", onclick: () => openUserForm(u) }, "Mot de passe"), toggle, del));
+  });
+  return [
+    el("div", { class: "page-actions" }, el("p", { class: "muted" },
+      "Administrateur : cibles, secrets, scans et comptes. Lecteur : consultation des évaluations, tableaux de bord et rapports."), add),
+    section("Comptes de la console", plural(list.length, "compte", "comptes"), el("div", { class: "table-wrap" }, el("table", { class: "data" },
+      el("thead", {}, el("tr", {}, el("th", {}, "Compte"), el("th", {}, "Rôle"), el("th", { class: "hide-sm" }, "Dernière connexion"), el("th", {}, "État"), el("th", {}, ""))),
+      el("tbody", {}, rows)))),
+  ];
+}
+function passwordFields(minLen) {
+  const pwd = el("input", { type: "password", autocomplete: "new-password", minlength: minLen, required: true });
+  const confirmPwd = el("input", { type: "password", autocomplete: "new-password", required: true });
+  return { pwd, confirmPwd, nodes: [field("Mot de passe", pwd, `${minLen} caractères minimum, 3 types de caractères parmi minuscules, majuscules, chiffres et symboles`), field("Confirmation", confirmPwd)],
+    check: () => pwd.value === confirmPwd.value ? "" : "Les deux mots de passe diffèrent" };
+}
+function openUserForm(u = null) {
+  const err = formError();
+  const pf = passwordFields(state.minPassword);
+  const username = input({ autocomplete: "off", maxlength: 64 });
+  const display = input({ maxlength: 80 });
+  const role = el("select", {}, Object.entries(ROLES).map(([k, v]) => el("option", { value: k }, v)));
+  role.value = "viewer"; // moindre privilège par défaut
+  const save = el("button", { class: "btn btn-primary", type: "submit" }, u ? "Réinitialiser" : "Créer le compte");
+  const form = el("form", { class: "form" },
+    u ? el("p", { class: "muted" }, "Les sessions ouvertes de ce compte seront fermées.") : [field("Identifiant", username), field("Nom affiché", display), field("Rôle", role)],
+    pf.nodes, err, el("div", { class: "actions" }, save));
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    showError(err, pf.check());
+    if (pf.check()) return;
+    busy(save, "Enregistrement…", async () => {
+      try {
+        if (u) await api(`/users/${u.username}`, { method: "PATCH", body: JSON.stringify({ password: pf.pwd.value }) });
+        else await api("/users", { method: "POST", body: JSON.stringify({ username: username.value.trim(), display_name: display.value, role: role.value, password: pf.pwd.value }) });
+        closeDrawer();
+        toast(u ? "Mot de passe réinitialisé" : "Compte créé");
+        softRender();
+      } catch (e2) { showError(err, e2.message); }
+    });
+  });
+  openPanel(u ? "Réinitialiser le mot de passe" : "Nouveau compte", u ? u.username : "Ajouter un compte", form);
+}
+function openPasswordForm() {
+  const err = formError();
+  const current = el("input", { type: "password", autocomplete: "current-password", required: true });
+  const pf = passwordFields(state.minPassword);
+  const save = el("button", { class: "btn btn-primary", type: "submit" }, "Changer le mot de passe");
+  const form = el("form", { class: "form" }, field("Mot de passe actuel", current), pf.nodes, err, el("div", { class: "actions" }, save));
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    showError(err, pf.check());
+    if (pf.check()) return;
+    busy(save, "Enregistrement…", async () => {
+      try { await api("/auth/password", { method: "POST", body: JSON.stringify({ current: current.value, new: pf.pwd.value }) }); closeDrawer(); toast("Mot de passe changé"); }
+      catch (e2) { showError(err, e2.message); }
+    });
+  });
+  openPanel("Mon compte", state.user.display_name, form);
+}
+
+// ---------------------------------------------------------------------------- vue : journal d'audit
+const EVENTS = {
+  setup: "Initialisation de l'appliance", login: "Connexion", logout: "Déconnexion", login_failed: "Échec de connexion", login_locked: "Compte temporairement bloqué",
+  password_changed: "Changement de mot de passe", user_created: "Compte créé", user_updated: "Compte modifié", user_deleted: "Compte supprimé",
+  target_created: "Cible créée", target_updated: "Cible modifiée", target_deleted: "Cible supprimée", job_scan: "Scan demandé",
+  job_test: "Test de connexion demandé", job_ai: "Synthèse IA demandée", job_cancelled: "Tâche annulée",
+  snapshot_imported: "Snapshot importé", scan_deleted: "Rapport supprimé",
+};
+async function viewAudit() {
+  const list = await api("/audit?limit=500");
+  if (!list.length) return el("section", { class: "section" }, emptyState("Journal vide", "Les actions de la console sont journalisées ici."));
+  const details = (e) => Object.entries(e).filter(([k]) => !["at", "event", "user"].includes(k))
+    .map(([k, v]) => `${k} : ${Array.isArray(v) ? v.join(", ") : v}`).join(" · ");
+  return section("Journal d'audit de la console", "500 derniers événements", el("div", { class: "table-wrap" }, el("table", { class: "data" },
+    el("thead", {}, el("tr", {}, el("th", {}, "Date"), el("th", {}, "Compte"), el("th", {}, "Événement"), el("th", { class: "hide-sm" }, "Détails"))),
+    el("tbody", {}, list.map((e) => el("tr", { class: e.event.startsWith("login_") ? "warn" : null },
+      el("td", {}, fmtDateTime(e.at)), el("td", {}, e.user || "—"), el("td", {}, EVENTS[e.event] || e.event),
+      el("td", { class: "hide-sm muted" }, details(e))))))));
+}
+
+// ---------------------------------------------------------------------------- connexion
+function showAuth(mode, info = {}) {
+  clearTimeout(jobsState.timer);
+  state.user = null;
+  document.body.dataset.role = "";
+  const err = formError();
+  if (info.message) showError(err, info.message);
+  const username = input({ autocomplete: "username", required: true, maxlength: 64 });
+  let form;
+  if (mode === "setup") {
+    const token = input({ required: true, autocomplete: "off" });
+    const display = input({ maxlength: 80 });
+    const pf = passwordFields(info.min_password || 12);
+    const go = el("button", { class: "btn btn-primary", type: "submit" }, "Créer l'administrateur");
+    form = el("form", { class: "form" },
+      el("h1", {}, "Première configuration"),
+      el("p", { class: "muted" }, "Créez le compte administrateur de la console. Le jeton d'installation est affiché dans le journal du service API et enregistré dans le fichier setup-token du dossier de données (sur l'appliance : sudo cat /var/lib/adsentry/setup-token)."),
+      field("Jeton d'installation", token), field("Identifiant", username), field("Nom affiché", display), pf.nodes, err, go);
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      showError(err, pf.check());
+      if (pf.check()) return;
+      busy(go, "Création…", async () => {
+        try {
+          const user = await api("/auth/setup", { method: "POST", body: JSON.stringify({ token: token.value, username: username.value.trim(), display_name: display.value, password: pf.pwd.value }) });
+          startApp(user, { first: true });
+        } catch (e2) { showError(err, e2.message); }
+      });
+    });
+  } else {
+    const pwd = el("input", { type: "password", autocomplete: "current-password", required: true });
+    const go = el("button", { class: "btn btn-primary", type: "submit" }, "Se connecter");
+    form = el("form", { class: "form" }, el("h1", {}, "Connexion"), field("Identifiant", username), field("Mot de passe", pwd), err, go);
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      busy(go, "Connexion…", async () => {
+        try { startApp(await api("/auth/login", { method: "POST", body: JSON.stringify({ username: username.value.trim(), password: pwd.value }) })); }
+        catch (e2) { showError(err, e2.message); pwd.value = ""; pwd.focus(); }
+      });
+    });
+  }
+  $("auth").replaceChildren(el("div", { class: "auth-card" },
+    el("div", { class: "brand" }, el("span", {}, "ADSentry")), form,
+    el("p", { class: "muted small" }, "Audit Active Directory, PKI et Entra ID en lecture seule.")));
+  document.body.classList.add("signed-out");
+  setTimeout(() => form.querySelector("input")?.focus(), 30);
+}
+async function startApp(user, { first = false } = {}) {
+  state.user = user;
+  document.body.dataset.role = user.role;
+  document.body.classList.remove("signed-out");
+  $("auth").replaceChildren();
+  $("user-name").textContent = user.display_name;
+  $("user-role").textContent = user.role_label;
+  await refreshScans();
+  if (first) location.hash = "#/targets";
+  else if (user.role === "admin" && !state.scans.length && !location.hash) location.hash = "#/targets";
+  route();
+  pollJobs();
+  watchScans();
+}
+async function logout() {
+  try { await api("/auth/logout", { method: "POST" }); } catch { /* déjà déconnecté */ }
+  state.scans = []; state.scan = null; state.scanId = null;
+  jobsState.known.clear();
+  clearTimeout(scansTimer);
+  scanCache.clear();
+  closeDrawer();
+  $("drawer-body").replaceChildren();
+  $("view").replaceChildren();
+  showAuth("login");
+}
+
 // ---------------------------------------------------------------------------- routeur
 const RENDER = { dashboard: viewDashboard, maturity: viewMaturity, compare: viewCompare, overview: viewOverview,
-  findings: viewFindings, pki: viewPki, entra: viewEntra, mitre: viewMitre, report: viewReport, scans: viewScans, rules: viewRules };
+  findings: viewFindings, pki: viewPki, entra: viewEntra, mitre: viewMitre, report: viewReport, scans: viewScans, rules: viewRules,
+  targets: viewTargets, jobs: viewJobs, users: viewUsers, audit: viewAudit, help: viewHelp };
+
+function currentView() {
+  const path = (location.hash.slice(2) || "dashboard").split("?")[0];
+  return RENDER[path] && (!VIEWS[path].admin || state.user?.role === "admin") ? path : "dashboard";
+}
+let rendering = false;
+async function softRender() {
+  // Réaffiche la vue courante sans la remettre en haut de page (mises à jour en direct)
+  if (rendering || !state.user || $("drawer").classList.contains("open")) return;
+  rendering = true;
+  try {
+    const [, query] = (location.hash.slice(2) || "").split("?");
+    const content = await RENDER[currentView()](new URLSearchParams(query || ""));
+    $("view").replaceChildren(...[content].flat().filter(Boolean));
+  } catch { /* la prochaine actualisation réessaiera */ } finally { rendering = false; }
+}
 
 async function route() {
-  const [path, query] = (location.hash.slice(2) || "dashboard").split("?");
-  const name = RENDER[path] ? path : "dashboard";
+  if (!state.user) return;
+  const [, query] = (location.hash.slice(2) || "dashboard").split("?");
+  const name = currentView();
   const meta = VIEWS[name];
   document.querySelectorAll("nav a").forEach((a) => a.classList.toggle("active", a.dataset.view === name));
   $("page-title").textContent = meta.title;
@@ -668,7 +1520,7 @@ async function route() {
   view.replaceChildren(el("p", { class: "muted" }, "Chargement…"));
   try {
     const content = await RENDER[name](new URLSearchParams(query || ""));
-    view.replaceChildren(...[content].flat());
+    view.replaceChildren(...[content].flat().filter(Boolean));
   } catch (e) {
     view.replaceChildren(el("section", { class: "section" }, emptyState("Impossible d'afficher cette page", e.message)));
   }
@@ -685,6 +1537,8 @@ $("drawer-close").addEventListener("click", closeDrawer);
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeDrawer(); closeSidebar(); } });
 $("scan-select").addEventListener("change", async (e) => { await loadScan(e.target.value); route(); });
 $("domain-select").addEventListener("change", (e) => { state.domain = e.target.value; route(); });
+$("logout-btn").addEventListener("click", logout);
+$("password-btn").addEventListener("click", openPasswordForm);
 $("upload").addEventListener("change", async (e) => {
   const form = new FormData();
   form.append("snapshot", e.target.files[0]);
@@ -699,6 +1553,15 @@ $("upload").addEventListener("change", async (e) => {
 });
 window.addEventListener("hashchange", route);
 
-refreshScans().then(route).catch((e) => {
-  $("view").replaceChildren(el("section", { class: "section" }, emptyState("API injoignable", e.message)));
-});
+(async () => {
+  try {
+    const st = await api("/auth/status");
+    state.minPassword = st.min_password;
+    if (st.setup_required) showAuth("setup", st);
+    else if (!st.user) showAuth("login", st);
+    else await startApp(st.user);
+  } catch (e) {
+    $("auth").replaceChildren(el("div", { class: "auth-card" }, emptyState("API injoignable", e.message)));
+    document.body.classList.add("signed-out");
+  }
+})();

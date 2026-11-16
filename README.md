@@ -18,14 +18,38 @@ Audit de sécurité **Active Directory + PKI (ADCS) + Entra ID**, mappé sur **M
 - **Appliance** Debian 13 durcie (Packer) : Docker Compose, HTTPS, planification des scans,
   secrets chiffrés, tableau de bord web
 
+## Console web
+
+Tout se pilote depuis le navigateur : cibles AD / Entra ID et leurs secrets (chiffrés), test de connexion,
+lancement des scans avec avancement en direct, planification, synthèse IA, rapports et tableaux de bord.
+Deux rôles : **Administrateur** (gestion complète) et **Lecteur** (consultation des évaluations).
+
+Trois façons de l'exécuter sous Linux :
+
+| Mode | Pour | Documentation |
+|---|---|---|
+| Appliance (VM Debian 13 + Docker Compose + HTTPS) | production | [docs/APPLIANCE.md](docs/APPLIANCE.md) |
+| Service systemd sans Docker | serveur Linux existant | [docs/INSTALL-LINUX.md](docs/INSTALL-LINUX.md) |
+| Processus unique | développement, démonstration | ci-dessous |
+
 ## Démarrage rapide (développement)
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[all]"
 pytest
+adsentry serve --worker --web appliance/web        # console sur http://127.0.0.1:8000
+```
+
+Au premier lancement, la console demande le **jeton d'installation** affiché dans le terminal pour créer
+l'administrateur. Importez ensuite `tests/fixtures/vulnerable_snapshot.json` (bouton « Importer un snapshot »)
+pour une démonstration sans AD.
+
+En ligne de commande :
+
+```bash
 adsentry scan tests/fixtures/vulnerable_snapshot.json -o result.json
-ADSENTRY_WEB_DIR=appliance/web adsentry serve      # tableau de bord sur http://127.0.0.1:8000
+adsentry user add alice --role viewer                # comptes de la console (admin | viewer)
 ```
 
 Collecte réelle (lab uniquement tant que la phase 1 n'est pas validée) :
@@ -41,7 +65,8 @@ adsentry scan snapshot.json
 | Document | Contenu |
 |---|---|
 | [docs/ROADMAP.md](docs/ROADMAP.md) | phases de développement (à suivre avec `/phase <n>` dans Claude Code) |
-| [docs/APPLIANCE.md](docs/APPLIANCE.md) | construction, flux réseau, exploitation de l'appliance |
+| [docs/APPLIANCE.md](docs/APPLIANCE.md) | construction, flux réseau, comptes et rôles, exploitation de l'appliance |
+| [docs/INSTALL-LINUX.md](docs/INSTALL-LINUX.md) | installation sur un serveur Linux sans Docker (systemd) |
 | [docs/ENTRA.md](docs/ENTRA.md) | création de l'application d'audit Entra ID (lecture seule) |
 | [lab/README.md](lab/README.md) | lab de test et vérité terrain |
 
