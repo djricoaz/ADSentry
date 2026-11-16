@@ -13,7 +13,7 @@ Niveau de maturité (1 à 5), déterministe et explicable :
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from .models import Category, Finding, ScanResult, Severity
@@ -123,13 +123,21 @@ def compare(base: ScanResult, target: ScanResult) -> dict:
 # ----------------------------------------------------------------------------- tableau de bord
 
 
-def dashboard(scans: list[tuple[str, ScanResult]], domain: str | None = None) -> dict:
-    """KPI, séries temporelles et cycle de vie des constats pour un périmètre."""
+def dashboard(scans: list[tuple[str, ScanResult]], domain: str | None = None, days: int | None = None) -> dict:
+    """KPI, séries temporelles et cycle de vie des constats pour un périmètre.
+
+    days : ne retenir que les scans des N jours précédant le dernier scan du périmètre (le dernier est toujours
+    inclus) ; tous les indicateurs sont alors recalculés sur cette période.
+    """
     domains = sorted({r.domain for _, r in scans})
     domain = domain or (scans[-1][1].domain if scans else None)
     series = [(sid, r) for sid, r in scans if r.domain == domain]
     if not series:
         return {"domains": domains, "domain": domain, "timeline": [], "kpis": {}, "lifecycle": [], "events": []}
+    total_scans = len(series)
+    if days:
+        cutoff = series[-1][1].collected_at - timedelta(days=days)
+        series = [(sid, r) for sid, r in series if r.collected_at >= cutoff]
 
     timeline = [summarize(sid, r) for sid, r in series]
 
@@ -194,6 +202,11 @@ def dashboard(scans: list[tuple[str, ScanResult]], domain: str | None = None) ->
             ((now - v["first_seen"]).days for v in open_items if v.get("severity") == "critical"), default=None
         ),
         "scans": len(timeline),
+        "scans_total": total_scans,
+        "last_scan_id": series[-1][0],
+        "last_collected_at": now.isoformat(),
+        "objects": last["objects"],
+        "severity": last["severity"],
     }
     lifecycle = sorted(
         (

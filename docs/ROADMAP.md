@@ -63,7 +63,10 @@ Objectif : prouver que la collecte produit un Snapshot juste sur un vrai domaine
 
 ## Phase 4 — Dashboard complet et sécurité de l'appliance
 
-- [ ] Export PDF du tableau de bord et des comparaisons ; objectifs de maturité par périmètre
+- [x] Tableau de bord interactif : synthèse en langage clair, KPI cliquables avec tendances et aide contextuelle,
+      filtre de période (KPI recalculés), graphiques cliquables, priorités d'action, suivi des corrections,
+      mise à jour automatique, impression / PDF, export CSV des constats, guide de lecture pour les lecteurs
+- [ ] Export PDF des comparaisons ; objectifs de maturité par périmètre
 - [x] Comptes locaux et rôles **administrateur / lecteur** à la place du basic auth ; sessions, verrouillage,
       protection CSRF, journal d'audit de la console, assistant de premier démarrage (jeton d'installation)
 - [ ] **Authentification OIDC Entra ID** + rôle intermédiaire « analyste »

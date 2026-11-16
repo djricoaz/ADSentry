@@ -34,6 +34,21 @@ def test_dashboard_and_lifecycle(tmp_path):
     )
 
 
+def test_dashboard_period(tmp_path):
+    build(tmp_path)
+    scans = load_all(tmp_path)
+    full = dashboard(scans)
+    first, last = scans[0][1].collected_at, scans[-1][1].collected_at
+    span = (last - first).days
+    short = dashboard(scans, days=max(1, span // 3))
+    assert 1 <= short["kpis"]["scans"] < full["kpis"]["scans"] == short["kpis"]["scans_total"] == 7
+    assert short["kpis"]["last_scan_id"] == full["kpis"]["last_scan_id"] == scans[-1][0]
+    assert short["timeline"][-1] == full["timeline"][-1]  # le dernier scan est toujours inclus
+    assert short["kpis"]["global_score"] == full["kpis"]["global_score"]
+    assert dashboard(scans, days=span + 1)["kpis"]["scans"] == 7
+    assert sum(full["kpis"]["severity"].values()) == full["timeline"][-1]["findings"]
+
+
 def test_compare_reports(tmp_path):
     build(tmp_path)
     (_, first), (_, second) = load_all(tmp_path)[:2]

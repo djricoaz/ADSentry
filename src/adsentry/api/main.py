@@ -546,10 +546,10 @@ def _load(scan_id: str) -> ScanResult:
 
 
 @app.get("/api/dashboard")
-def dashboard_view(_: Viewer, domain: str | None = None):
+def dashboard_view(_: Viewer, domain: str | None = None, days: int | None = None):
     from ..history import dashboard, load_all
 
-    return dashboard(load_all(DATA_DIR), domain)
+    return dashboard(load_all(DATA_DIR), domain, days if days and days > 0 else None)
 
 
 @app.get("/api/compare")
