@@ -71,7 +71,8 @@ Tout le reste se fait dans la console web `https://<nom de l'appliance>` :
 3. **Administration > Comptes et rôles** : créer les comptes des équipes.
 4. **Administration > IA locale** : installer le modèle (téléchargement par le conteneur `ollama`, avec
    progression), ajouter vos procédures à la base de connaissances puis « Réindexer », tester l'analyste.
-   Les synthèses des scans utilisent alors ces documents. Réglages (modèle de base, base de connaissances)
+   Les synthèses des scans utilisent alors ces documents. Trois documents modèles sont fournis à la première
+   ouverture (Tier 0, procédures de correction, comptes de service) : adaptez les passages entre [crochets]. Réglages (modèle de base, base de connaissances)
    et données dans `/var/lib/adsentry/ai.json`, `/var/lib/adsentry/knowledge/`, `/var/lib/adsentry/rag_index.npz`.
 
 ## Comptes et rôles de la console

@@ -161,7 +161,32 @@ def status(settings: AiSettings | None = None, admin: OllamaAdmin | None = None)
 # ----------------------------------------------------------------------------- base de connaissances
 
 
+DEFAULTS_DIR = Path(__file__).with_name("knowledge_defaults")
+
+
+def ensure_default_knowledge() -> list[str]:
+    """Copie une seule fois les documents fournis avec ADSentry (modèles à adapter : passages entre [crochets]).
+
+    Un fichier témoin empêche toute nouvelle copie : un document supprimé ou modifié n'est jamais restauré, et un
+    document existant du même nom n'est jamais remplacé.
+    """
+    d = knowledge_dir()
+    marker = d / ".documents-par-defaut"
+    if marker.exists():
+        return []
+    d.mkdir(parents=True, exist_ok=True)
+    added = []
+    for src in sorted(DEFAULTS_DIR.glob("*.md")):
+        dst = d / src.name
+        if not dst.exists():
+            dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+            added.append(src.name)
+    marker.write_text("Documents par défaut copiés : " + ", ".join(added) + "\n", encoding="utf-8")
+    return added
+
+
 def list_knowledge() -> list[dict]:
+    ensure_default_knowledge()
     d = knowledge_dir()
     if not d.exists():
         return []
