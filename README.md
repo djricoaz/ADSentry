@@ -23,6 +23,8 @@ Audit de sécurité **Active Directory + PKI (ADCS) + Entra ID**, mappé sur **M
 Tout se pilote depuis le navigateur : cibles AD / Entra ID et leurs secrets (chiffrés), test de connexion,
 lancement des scans avec avancement en direct, planification, synthèse IA, rapports et tableaux de bord.
 Deux rôles : **Administrateur** (gestion complète) et **Lecteur** (consultation des évaluations).
+La vue **Topologie** dessine les chemins des comptes et groupes à risque vers le Tier 0, et la carte des
+approbations entre domaines et forêts avec une simulation de compromission.
 
 Trois façons de l'exécuter sous Linux :
 

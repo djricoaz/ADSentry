@@ -73,7 +73,10 @@ Objectif : prouver que la collecte produit un Snapshot juste sur un vrai domaine
 - [ ] SQLite/PostgreSQL au lieu des fichiers JSON ; historique et tendances
 - [x] Gestion des cibles et des secrets depuis l'interface ; test de connexion ; lancement de scan avec progression
       (file de tâches API → worker) ; planification ; synthèse IA en tâche de fond
-- [ ] Heatmap ATT&CK (tactiques lues depuis le STIX), graphe des chemins d'attaque
+- [x] Vue **Topologie** : graphe des comptes, groupes et ordinateurs à risque (appartenances, ACL, délégations,
+      historique SID) avec chemins les plus courts vers le Tier 0 ; carte des approbations domaines/forêts
+      (type, sens, transitivité, risques) et simulation de compromission
+- [ ] Heatmap ATT&CK (tactiques lues depuis le STIX)
 - [ ] Chat « analyste IA » contextualisé sur un constat
 
 ## Phase 5 — IA locale (dans cet ordre)

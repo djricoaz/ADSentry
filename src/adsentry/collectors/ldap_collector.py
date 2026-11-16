@@ -225,6 +225,8 @@ class LdapCollector:
         self.base_dn = info["defaultNamingContext"][0]
         self.config_dn = info["configurationNamingContext"][0]
         self.schema_dn = info["schemaNamingContext"][0]
+        root = info.get("rootDomainNamingContext", [None])[0]
+        self.forest = ".".join(p.split("=", 1)[1] for p in root.split(",")) if root else None
         self.pks_dn = f"CN=Public Key Services,CN=Services,{self.config_dn}"
 
     def _known_attributes(self, attrs: list[str]) -> list[str]:
@@ -333,6 +335,7 @@ class LdapCollector:
             computers=computers,
             groups=group_models,
             trusts=self._trusts(),
+            intra_forest_trusts=self._trusts(within_forest=True),
             acl_edges=acl,
             dns_zones=self._dns_zones(),
             pki=self._pki(groups),
@@ -625,6 +628,7 @@ class LdapCollector:
             name=self.domain,
             sid=self.domain_sid,
             netbios=_first(a, "nETBIOSName"),
+            forest=getattr(self, "forest", None),
             functional_level=int(_first(a, "msDS-Behavior-Version", 0)),
             forest_functional_level=int(_first(part[0]["a"], "msDS-Behavior-Version", 0)) if part else None,
             machine_account_quota=int(_first(a, "ms-DS-MachineAccountQuota", 10)),
@@ -654,7 +658,8 @@ class LdapCollector:
         res = self._search(dn, "(objectClass=*)", ["member"], scope="BASE")
         return _as_list(res[0]["a"].get("member")) if res else []
 
-    def _trusts(self) -> list[Trust]:
+    def _trusts(self, within_forest: bool = False) -> list[Trust]:
+        """Approbations sortant de la forêt (par défaut) ou internes à la forêt (within_forest=True)."""
         out = []
         for e in self._search(
             self.base_dn,
@@ -671,8 +676,20 @@ class LdapCollector:
         ):
             a, raw = e["a"], e["raw"]
             attrs = int(_first(a, "trustAttributes", 0))
-            if attrs & 0x20:  # WITHIN_FOREST : pas de filtrage SID par conception
+            if bool(attrs & 0x20) != within_forest:  # WITHIN_FOREST : pas de filtrage SID par conception
                 continue
+            ttype = int(_first(a, "trustType", 2))
+            kind = (
+                "within_forest"
+                if attrs & 0x20
+                else "forest"
+                if attrs & 0x8
+                else "realm"
+                if ttype == 3
+                else "downlevel"
+                if ttype == 1
+                else "external"
+            )
             sid_filtering = (not attrs & 0x40) if attrs & 0x8 else bool(attrs & 0x4)
             enc = _first(a, "msDS-SupportedEncryptionTypes")
             out.append(
@@ -682,7 +699,8 @@ class LdapCollector:
                     direction={1: "inbound", 2: "outbound", 3: "bidirectional"}.get(
                         int(_first(a, "trustDirection", 3))
                     ),
-                    trust_type=int(_first(a, "trustType", 2)),
+                    trust_type=ttype,
+                    kind=kind,
                     sid_filtering=sid_filtering,
                     tgt_delegation=bool(attrs & 0x800),
                     last_change=_dt(_first(a, "whenChanged")),

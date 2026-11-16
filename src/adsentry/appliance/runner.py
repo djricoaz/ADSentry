@@ -169,6 +169,16 @@ def _ai(result_path: Path, scan_id: str) -> dict:
     return analysis
 
 
+def save_topology(snap: Snapshot, scan_id: str) -> None:
+    """Graphe des comptes/groupes et carte des approbations, à côté du rapport (non bloquant)."""
+    from ..topology import build
+
+    try:
+        (DATA_DIR / f"{scan_id}.graph.json").write_text(json.dumps(build(snap), ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        log.exception("Topologie non calculée pour %s", scan_id)
+
+
 def run_target(target: Target, secrets: SecretStore | None = None, progress=_noop) -> Path:
     secrets = secrets or SecretStore()
     started = datetime.now()
@@ -179,6 +189,7 @@ def run_target(target: Target, secrets: SecretStore | None = None, progress=_noo
     scan_id = f"{started:%Y%m%d-%H%M%S}-{target.name}"
     path = DATA_DIR / f"{scan_id}.json"
     path.write_text(result.model_dump_json(indent=1), encoding="utf-8")
+    save_topology(snap, scan_id)
     log.info("%s : score %s/100, %s constats -> %s", target.name, result.global_score, len(result.findings), path)
     if target.ai_analysis:
         progress(90, "Synthèse par l'IA locale")

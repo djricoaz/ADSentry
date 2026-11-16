@@ -582,7 +582,7 @@ def list_scans(_: Viewer):
 
     out = []
     for p in DATA_DIR.glob("*.json"):
-        if p.name.endswith(".ai.json"):
+        if p.name.endswith((".ai.json", ".graph.json")):
             continue
         r = ScanResult.model_validate_json(p.read_text(encoding="utf-8"))
         out.append(
@@ -608,6 +608,15 @@ def get_scan(scan_id: str, _: Viewer):
 @app.get("/api/scans/{scan_id}/navigator")
 def get_navigator_layer(scan_id: str, _: Viewer):
     return build_layer(_load(scan_id))
+
+
+@app.get("/api/scans/{scan_id}/topology")
+def get_topology(scan_id: str, _: Viewer):
+    _load(scan_id)
+    path = DATA_DIR / f"{scan_id}.graph.json"
+    if not path.exists():
+        raise HTTPException(404, "Topologie indisponible pour ce rapport (antérieur à la fonction) : relancez un scan")
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 @app.get("/api/scans/{scan_id}/ai-analysis")
@@ -644,6 +653,9 @@ async def create_scan(snapshot: UploadFile, admin: Admin):
     result = analyze(snap)
     scan_id = uuid.uuid4().hex[:12]
     (DATA_DIR / f"{scan_id}.json").write_text(result.model_dump_json(indent=1), encoding="utf-8")
+    from ..appliance.runner import save_topology
+
+    save_topology(snap, scan_id)
     A.audit("snapshot_imported", admin.username, scan=scan_id, domain=result.domain)
     return {"id": scan_id, "global_score": result.global_score}
 
@@ -653,6 +665,7 @@ def delete_scan(scan_id: str, admin: Admin):
     _load(scan_id)
     (DATA_DIR / f"{scan_id}.json").unlink()
     (DATA_DIR / f"{scan_id}.ai.json").unlink(missing_ok=True)
+    (DATA_DIR / f"{scan_id}.graph.json").unlink(missing_ok=True)
     A.audit("scan_deleted", admin.username, scan=scan_id)
     return {"ok": True}
 
