@@ -243,6 +243,23 @@ def gpo_registry_bad(snap: Snapshot, params: dict) -> CheckResult:
     return _gpo_eq(snap, params["key"], {str(b) for b in params["bad"]}, params.get("scope", "any"))
 
 
+@check("anom_gpo_registry_present")
+def gpo_registry_present(snap: Snapshot, params: dict) -> CheckResult:
+    """Une GPO définit une valeur qui ne devrait jamais l'être (ex. mot de passe en clair). Seul le nom de la GPO
+    est rapporté : la valeur, potentiellement secrète, n'est jamais recopiée dans le rapport."""
+    return CheckResult(
+        affected=[g.name for g, v in gpo_values(snap, params["key"], params.get("scope", "any")) if str(v)]
+    )
+
+
+@check("anom_lockout_disabled")
+def lockout_disabled(snap: Snapshot, params: dict) -> CheckResult:
+    d = snap.domain
+    if d is None or d.lockout_threshold is None:
+        return CheckResult()
+    return CheckResult(affected=[d.name]) if d.lockout_threshold == 0 else CheckResult()
+
+
 @check("anom_gpo_registry_missing")
 def gpo_registry_missing(snap: Snapshot, params: dict) -> CheckResult:
     """Aucune GPO ne positionne la valeur sûre attendue (params.key, params.good, params.scope)."""

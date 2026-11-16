@@ -127,6 +127,21 @@ class EntraCollector:
             t.users_can_consent = any(g.endswith("microsoft-user-default-legacy") for g in grants)
             t.guest_role = c.ENTRA_GUEST_ROLES.get(a.get("guestUserRoleId", ""))
             t.guest_invite_from = a.get("allowInvitesFrom")
+        methods = self._try("/policies/authenticationMethodsPolicy")
+        if methods:
+            confs = methods[0].get("authenticationMethodConfigurations") or []
+            t.weak_auth_methods = sorted(
+                x["id"].lower()
+                for x in confs
+                if x.get("id", "").lower() in ("sms", "voice") and x.get("state") == "enabled"
+            )
+        devices = self._try("/policies/deviceRegistrationPolicy")  # Policy.Read.DeviceConfiguration
+        if devices:
+            dv = devices[0]
+            members = ((dv.get("azureADJoin") or {}).get("allowedToJoin") or {}).get("@odata.type", "")
+            t.device_join_all_users = members.endswith("allDeviceRegistrationMembership") if members else None
+            mfa = dv.get("multiFactorAuthConfiguration")
+            t.device_join_mfa_required = None if mfa is None else mfa == "required"
         domains = self._try("/domains") or []
         t.federated_domains = [d["id"] for d in domains if d.get("authenticationType") == "Federated"]
 
@@ -293,6 +308,13 @@ class EntraCollector:
                     client_app_types=cond.get("clientAppTypes") or [],
                     grant_controls=grant.get("builtInControls") or [],
                     authentication_strength=(grant.get("authenticationStrength") or {}).get("id"),
+                    auth_flows=[
+                        x.strip()
+                        for x in ((cond.get("authenticationFlows") or {}).get("transferMethods") or "").split(",")
+                        if x.strip()
+                    ],
+                    user_risk_levels=cond.get("userRiskLevels") or [],
+                    sign_in_risk_levels=cond.get("signInRiskLevels") or [],
                 )
             )
         return out

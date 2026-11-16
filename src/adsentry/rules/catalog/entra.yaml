@@ -341,3 +341,76 @@
   description: "Les anciennes versions (dont la branche 1.x, hors support) contiennent des vulnérabilités connues."
   remediation: "Mettre à jour Entra Connect vers la dernière version et traiter son serveur comme Tier 0."
   mitre: [{technique: T1556.007}]
+
+- id: E-CA-ADMINS-NOT-PHISHING-RESISTANT
+  category: entra_id
+  check: entra_ca
+  params: {what: phishing_resistant_admins}
+  severity: high
+  points: 20
+  source: graph
+  title: "Administrateurs sans MFA résistante à l'hameçonnage"
+  description: "Une MFA par notification, code ou SMS peut être interceptée par un site d'hameçonnage relais : les comptes d'administration doivent utiliser FIDO2, Windows Hello ou un certificat."
+  remediation: "Stratégie d'accès conditionnel ciblant les rôles d'administration avec la force d'authentification « MFA résistante à l'hameçonnage »."
+  detection: "Connexions d'administrateurs avec une méthode autre que FIDO2/Windows Hello/certificat (journaux de connexion, champ authenticationDetails)."
+  mitre: [{technique: T1078.004}, {technique: T1111, relation: related}]
+  references:
+    - https://learn.microsoft.com/en-us/entra/identity/authentication/concept-authentication-strengths
+
+- id: E-CA-DEVICE-CODE
+  category: entra_id
+  check: entra_ca
+  params: {what: device_code}
+  severity: medium
+  points: 10
+  source: graph
+  title: "Flux d'authentification par code d'appareil non bloqué"
+  description: "Un attaquant peut envoyer un code d'appareil à saisir sur la vraie page Microsoft et obtenir les jetons de la victime (hameçonnage par code d'appareil)."
+  remediation: "Stratégie d'accès conditionnel : bloquer le flux « code d'appareil » pour tous, avec des exceptions limitées aux usages documentés (salles de réunion, terminaux sans navigateur)."
+  detection: "Connexions dont le protocole d'authentification est deviceCode dans les journaux de connexion."
+  mitre: [{technique: T1528}]
+  references:
+    - https://learn.microsoft.com/en-us/entra/identity/conditional-access/policy-block-authentication-flows
+
+- id: E-CA-NO-RISK-POLICIES
+  category: entra_id
+  check: entra_ca
+  params: {what: risk}
+  severity: medium
+  points: 15
+  source: graph
+  title: "Pas de stratégie d'accès conditionnel fondée sur le risque"
+  description: "Les connexions et utilisateurs jugés à risque par Identity Protection ne déclenchent ni MFA ni changement de mot de passe : la licence P2 est présente mais inexploitée."
+  remediation: "Créer une stratégie « risque de connexion moyen et élevé → MFA » et une stratégie « risque utilisateur élevé → changement de mot de passe sécurisé »."
+  detection: "Suivre les détections de risque non traitées dans Identity Protection."
+  mitre: [{technique: T1078.004}]
+  references:
+    - https://learn.microsoft.com/en-us/entra/id-protection/howto-identity-protection-configure-risk-policies
+
+- id: E-WEAK-AUTH-METHODS
+  category: entra_id
+  check: entra_weak_auth_methods
+  severity: medium
+  points: 10
+  source: graph
+  title: "Méthodes d'authentification faibles activées (SMS, appel vocal)"
+  description: "Les codes par SMS ou appel vocal sont exposés à l'échange de carte SIM, à l'interception et à l'hameçonnage."
+  remediation: "Migrer les utilisateurs vers Microsoft Authenticator ou des méthodes résistantes à l'hameçonnage, puis désactiver SMS et appel vocal dans la stratégie des méthodes d'authentification."
+  detection: "Connexions réussies par SMS ou appel vocal (journaux de connexion) ; inscriptions de nouveaux numéros de téléphone."
+  mitre: [{technique: T1111}]
+  references:
+    - https://learn.microsoft.com/en-us/entra/identity/authentication/concept-authentication-methods-manage
+
+- id: E-DEVICE-JOIN-NO-MFA
+  category: entra_id
+  check: entra_device_join
+  severity: medium
+  points: 10
+  source: graph
+  title: "Jonction d'appareils ouverte à tous sans MFA"
+  description: "Avec un simple mot de passe volé, un attaquant peut joindre son propre appareil au tenant et obtenir un jeton d'appareil pour contourner des stratégies d'accès conditionnel."
+  remediation: "Restreindre la jonction à un groupe dédié et exiger la MFA pour joindre ou inscrire un appareil (paramètre d'appareil ou action utilisateur « Inscrire ou joindre des appareils » en accès conditionnel)."
+  detection: "Ajouts d'appareils (journal d'audit « Add device ») par des comptes inhabituels ou depuis des emplacements inconnus."
+  mitre: [{technique: T1098.005}]
+  references:
+    - https://learn.microsoft.com/en-us/entra/identity/devices/manage-device-identities

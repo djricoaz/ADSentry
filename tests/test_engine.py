@@ -224,3 +224,28 @@ def test_api_roundtrip(tmp_path, monkeypatch):
     assert client.get("/api/scans").json()[0]["id"] == scan_id
     assert client.get(f"/api/scans/{scan_id}/navigator").json()["techniques"]
     assert client.get("/api/health").json()["status"] == "ok"
+
+
+def test_new_ad_controls_precise(vuln, hardened):
+    f = by_id(vuln)
+    assert f["P-DELEGATION-TO-DC"].affected == ["svc.dcdeleg → cifs/dc01.corp.local"]
+    assert f["P-FOREIGN-ADMINS"].affected == ["S-1-5-21-500000001-500000002-500000003-1105"]
+    assert f["P-DISABLED-ADMINS"].affected == ["old.admin"]
+    assert f["A-LOCKOUT-DISABLED"].affected == ["corp.local"]
+    # Le mot de passe distribué par GPO n'est jamais recopié dans le rapport
+    autologon = f["A-GPO-AUTOLOGON-PASSWORD"]
+    assert autologon.affected == ["Default Domain Policy"]
+    assert "Fixture-Synthetique-1" not in vuln.model_dump_json()
+    for rid in ("A-ALWAYS-INSTALL-ELEVATED", "A-WDIGEST", "A-POINT-AND-PRINT", "A-LSA-PROTECTION-DC"):
+        assert rid in f, rid
+
+
+def test_lockout_unknown_is_not_vulnerable():
+    from conftest import load_raw
+
+    from adsentry.models import Snapshot
+    from adsentry.rules.engine import analyze
+
+    raw = load_raw("vulnerable")
+    raw["domain"].pop("lockout_threshold")
+    assert "A-LOCKOUT-DISABLED" not in by_id(analyze(Snapshot.model_validate(raw)))

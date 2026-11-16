@@ -3,11 +3,11 @@
 Audit de sécurité **Active Directory + PKI (ADCS) + Entra ID**, mappé sur **MITRE ATT&CK**, avec
 **analyse IA 100 % locale** (Ollama) et livré sous forme d'**appliance Linux**.
 
-- **216 règles** déterministes, score de risque 0-100 sur 6 catégories : objets obsolètes, comptes à
+- **230 règles** déterministes, score de risque 0-100 sur 6 catégories : objets obsolètes, comptes à
   privilèges, approbations, anomalies, **PKI / Certificats**, **Entra ID**
 - Couverture complète des contrôles d'hygiène AD classiques : comptes, délégations, Kerberos, GPO,
   protocoles, DNS, approbations, RODC, ACL et chemins de contrôle
-- **Au-delà** : ADCS ESC1 → ESC16 complet, 29 règles Entra ID
+- **Au-delà** : ADCS ESC1 → ESC16 complet, 34 règles Entra ID
   (MFA, accès conditionnel, PIM, applications à permissions dangereuses, secrets de principaux de
   service, fédération…), corrélations hybrides AD ↔ Entra, chemins de contrôle, BadSuccessor (dMSA)
 - **Classification** de chaque modèle de certificat (T0 / Authentification / Agent / Restreint / Inactif)
@@ -69,6 +69,7 @@ adsentry scan snapshot.json
 | [docs/ROADMAP.md](docs/ROADMAP.md) | phases de développement (à suivre avec `/phase <n>` dans Claude Code) |
 | [docs/APPLIANCE.md](docs/APPLIANCE.md) | construction, flux réseau, comptes et rôles, exploitation de l'appliance |
 | [docs/INSTALL-LINUX.md](docs/INSTALL-LINUX.md) | installation sur un serveur Linux sans Docker (systemd) |
+| [docs/COUVERTURE.md](docs/COUVERTURE.md) | ce qui est contrôlé dans l'AD et Entra ID, et ce qui ne l'est pas encore |
 | [docs/ENTRA.md](docs/ENTRA.md) | création de l'application d'audit Entra ID (lecture seule) |
 | [lab/README.md](lab/README.md) | lab de test et vérité terrain |
 

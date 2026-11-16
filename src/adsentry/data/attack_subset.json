@@ -212,6 +212,13 @@
     "privilege-escalation"
    ]
   },
+  "T1098.005": {
+   "name": "Device Registration",
+   "tactics": [
+    "persistence",
+    "privilege-escalation"
+   ]
+  },
   "T1110": {
    "name": "Brute Force",
    "tactics": [
@@ -230,8 +237,21 @@
     "credential-access"
    ]
   },
+  "T1111": {
+   "name": "Multi-Factor Authentication Interception",
+   "tactics": [
+    "credential-access"
+   ]
+  },
   "T1134": {
    "name": "Access Token Manipulation",
+   "tactics": [
+    "stealth",
+    "privilege-escalation"
+   ]
+  },
+  "T1134.001": {
+   "name": "Token Impersonation/Theft",
    "tactics": [
     "stealth",
     "privilege-escalation"
@@ -307,6 +327,12 @@
     "credential-access"
    ]
   },
+  "T1548": {
+   "name": "Abuse Elevation Control Mechanism",
+   "tactics": [
+    "privilege-escalation"
+   ]
+  },
   "T1550.002": {
    "name": "Pass the Hash",
    "tactics": [
@@ -321,6 +347,12 @@
   },
   "T1552": {
    "name": "Unsecured Credentials",
+   "tactics": [
+    "credential-access"
+   ]
+  },
+  "T1552.002": {
+   "name": "Credentials in Registry",
    "tactics": [
     "credential-access"
    ]

@@ -159,6 +159,9 @@ DC_LOGON_RIGHTS = {
 
 # --- Entra ID ------------------------------------------------------------------
 ENTRA_ROLE_GLOBAL_ADMIN = "62e90394-69f5-4237-9190-012177145e10"
+# Force d'authentification intégrée « MFA résistante à l'hameçonnage » (FIDO2, Windows Hello, certificat)
+ENTRA_AUTH_STRENGTH_PHISHING_RESISTANT = "00000000-0000-0000-0000-000000000004"
+
 ENTRA_PRIVILEGED_ROLES = {
     ENTRA_ROLE_GLOBAL_ADMIN: "Global Administrator",
     "e8611ab8-c189-46e8-94e1-60213ab1f814": "Privileged Role Administrator",

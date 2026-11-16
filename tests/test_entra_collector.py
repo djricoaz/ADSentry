@@ -129,3 +129,68 @@ def test_entra_collector_end_to_end(monkeypatch):
         "E-APP-LONG-LIVED-SECRETS",
     } <= fired
     assert "E-RISKY-USERS" not in fired  # donnée P2 indisponible -> rien n'est inventé
+
+
+def test_new_entra_controls_parsed(monkeypatch):
+    extra = {
+        "/policies/authenticationMethodsPolicy": {
+            "authenticationMethodConfigurations": [
+                {"id": "Sms", "state": "enabled"},
+                {"id": "Voice", "state": "disabled"},
+                {"id": "Fido2", "state": "enabled"},
+            ]
+        },
+        "/policies/deviceRegistrationPolicy": {
+            "azureADJoin": {"allowedToJoin": {"@odata.type": "#microsoft.graph.allDeviceRegistrationMembership"}},
+            "multiFactorAuthConfiguration": "notRequired",
+        },
+        "/identity/conditionalAccess/policies": {
+            "value": [
+                {
+                    "displayName": "Bloquer code d'appareil",
+                    "state": "enabled",
+                    "conditions": {
+                        "users": {"includeUsers": ["All"]},
+                        "authenticationFlows": {"transferMethods": "deviceCodeFlow,authenticationTransfer"},
+                    },
+                    "grantControls": {"builtInControls": ["block"]},
+                },
+                {
+                    "displayName": "Risque",
+                    "state": "enabled",
+                    "conditions": {"users": {"includeUsers": ["All"]}, "signInRiskLevels": ["high"]},
+                    "grantControls": {"builtInControls": ["mfa"]},
+                },
+            ]
+        },
+    }
+    monkeypatch.setitem(
+        RESPONSES, "/policies/authenticationMethodsPolicy", extra["/policies/authenticationMethodsPolicy"]
+    )
+    monkeypatch.setitem(RESPONSES, "/policies/deviceRegistrationPolicy", extra["/policies/deviceRegistrationPolicy"])
+    monkeypatch.setitem(
+        RESPONSES, "/identity/conditionalAccess/policies", extra["/identity/conditionalAccess/policies"]
+    )
+    col = EntraCollector("tid", "client", client_secret="x")
+    col.http = httpx.Client(transport=httpx.MockTransport(handler))
+    monkeypatch.setattr(col, "_token", lambda: "fake")
+    t = col.collect().entra
+    assert t.weak_auth_methods == ["sms"]
+    assert t.device_join_all_users is True and t.device_join_mfa_required is False
+    block = next(p for p in t.ca_policies if p.name == "Bloquer code d'appareil")
+    assert block.auth_flows == ["deviceCodeFlow", "authenticationTransfer"]
+    assert next(p for p in t.ca_policies if p.name == "Risque").sign_in_risk_levels == ["high"]
+    fired = {f.rule_id: f for f in analyze(col.collect()).findings}
+    assert "E-WEAK-AUTH-METHODS" in fired and fired["E-WEAK-AUTH-METHODS"].affected == ["SMS"]
+    assert "E-DEVICE-JOIN-NO-MFA" in fired and "E-CA-DEVICE-CODE" not in fired
+
+
+def test_new_entra_controls_not_evaluated_without_data(monkeypatch):
+    col = EntraCollector("tid", "client", client_secret="x")
+    col.http = httpx.Client(transport=httpx.MockTransport(handler))
+    monkeypatch.setattr(col, "_token", lambda: "fake")
+    snap = col.collect()
+    assert snap.entra.weak_auth_methods is None and snap.entra.device_join_all_users is None
+    fired = {f.rule_id for f in analyze(snap).findings}
+    # données non lisibles (404/403) ou sans licence P2 : rien n'est inventé
+    assert not {"E-WEAK-AUTH-METHODS", "E-DEVICE-JOIN-NO-MFA", "E-CA-NO-RISK-POLICIES"} & fired

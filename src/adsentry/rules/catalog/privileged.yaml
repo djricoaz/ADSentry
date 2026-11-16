@@ -547,3 +547,42 @@
   description: "Comptes krbtgt_NNNN dont le RODC n'existe plus."
   remediation: "Supprimer les comptes krbtgt_NNNN orphelins."
   mitre: [{technique: T1558.001, relation: related}]
+
+- id: P-DELEGATION-TO-DC
+  category: privileged_accounts
+  check: priv_delegation_to_dc
+  severity: high
+  points: 30
+  title: "Délégation contrainte vers un contrôleur de domaine depuis un compte non administrateur"
+  description: "Un compte non Tier 0 peut obtenir des tickets au nom de n'importe quel utilisateur, administrateurs compris, pour un service d'un DC (CIFS, LDAP, HOST…) : la compromission de ce compte vaut celle du domaine."
+  remediation: "Retirer la délégation vers les services des DC (msDS-AllowedToDelegateTo) ou traiter le compte comme Tier 0 ; marquer les administrateurs « sensible et ne peut pas être délégué » et les placer dans Protected Users."
+  detection: "Événements 4769 sur les DC avec des tickets de délégation (S4U2Proxy) émis pour ce compte ; surveiller les modifications de msDS-AllowedToDelegateTo (5136)."
+  mitre: [{technique: T1558}, {technique: T1134.001, relation: related}]
+  references:
+    - https://learn.microsoft.com/en-us/windows-server/security/kerberos/kerberos-constrained-delegation-overview
+
+- id: P-FOREIGN-ADMINS
+  category: privileged_accounts
+  check: priv_foreign_admins
+  severity: high
+  points: 20
+  title: "Comptes d'un autre domaine dans les groupes d'administration"
+  description: "Des principaux d'un domaine approuvé administrent ce domaine : la sécurité du domaine dépend alors de celle de l'autre domaine, qui n'est pas maîtrisée ici."
+  remediation: "Retirer les principaux étrangers des groupes Tier 0 et créer des comptes d'administration dédiés dans ce domaine ; si un besoin subsiste, le documenter et durcir l'approbation (filtrage SID, authentification sélective)."
+  detection: "Surveiller les ajouts aux groupes privilégiés (4728, 4732, 4756) et les ouvertures de session d'administration de comptes d'un domaine approuvé."
+  mitre: [{technique: T1078.002}]
+  references:
+    - https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/appendix-b--privileged-accounts-and-groups-in-active-directory
+
+- id: P-DISABLED-ADMINS
+  category: privileged_accounts
+  check: priv_disabled_admins
+  severity: low
+  points: 5
+  title: "Comptes désactivés restés dans les groupes d'administration"
+  description: "Un compte désactivé mais toujours membre d'un groupe Tier 0 redevient administrateur dès qu'il est réactivé : c'est une porte discrète pour qui peut réactiver des comptes."
+  remediation: "Retirer les comptes désactivés de tous les groupes d'administration, puis les supprimer après la durée de conservation."
+  detection: "Surveiller la réactivation de comptes (4722) membres de groupes privilégiés."
+  mitre: [{technique: T1078.002, relation: related}]
+  references:
+    - https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/implementing-least-privilege-administrative-models

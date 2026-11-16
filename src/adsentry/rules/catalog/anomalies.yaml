@@ -673,3 +673,95 @@
   description: "pwdLastSet a été réinitialisé sans réel changement du secret (contournement de l'expiration)."
   remediation: "Forcer un changement réel et restreindre la délégation d'écriture sur pwdLastSet."
   mitre: [{technique: T1098}]
+
+- id: A-ALWAYS-INSTALL-ELEVATED
+  category: anomalies
+  check: anom_gpo_registry_bad
+  params: {key: 'machine\software\policies\microsoft\windows\installer\alwaysinstallelevated', bad: [1]}
+  severity: high
+  points: 25
+  source: gpo
+  title: "Installations Windows Installer toujours élevées (AlwaysInstallElevated)"
+  description: "Tout utilisateur peut installer un paquet MSI avec les droits SYSTEM : élévation de privilèges locale immédiate sur toutes les machines concernées."
+  remediation: "Désactiver « Toujours installer avec des droits élevés » (configurations ordinateur et utilisateur) et déployer les logiciels par un outil de distribution."
+  detection: "Installations MSI lancées par des utilisateurs standard (événements 1033/11707 du journal Application, création de processus msiexec en SYSTEM)."
+  mitre: [{technique: T1548}]
+  references:
+    - https://learn.microsoft.com/en-us/windows/win32/msi/alwaysinstallelevated
+
+- id: A-WDIGEST
+  category: anomalies
+  check: anom_gpo_registry_bad
+  params: {key: 'machine\system\currentcontrolset\control\securityproviders\wdigest\uselogoncredential', bad: [1]}
+  severity: high
+  points: 20
+  source: gpo
+  title: "WDigest réactivé : mots de passe en clair en mémoire"
+  description: "Le fournisseur WDigest conserve le mot de passe des utilisateurs connectés en clair dans la mémoire LSASS, lisible par tout attaquant administrateur local."
+  remediation: "Supprimer le paramètre UseLogonCredential=1 (ou le forcer à 0) et activer la protection LSA."
+  detection: "Surveiller la modification de la clé WDigest (Sysmon 13) et les accès au processus LSASS (Sysmon 10, 4656)."
+  mitre: [{technique: T1003.001}]
+  references:
+    - https://attack.mitre.org/techniques/T1003/001/
+
+- id: A-POINT-AND-PRINT
+  category: anomalies
+  check: anom_gpo_registry_bad
+  params: {key: 'machine\software\policies\microsoft\windows nt\printers\pointandprint\nowarningnoelevationoninstall', bad: [1]}
+  severity: high
+  points: 20
+  source: gpo
+  title: "Pilotes d'impression installés sans avertissement ni élévation (Point and Print)"
+  description: "Un utilisateur peut faire installer un pilote d'impression arbitraire avec les droits SYSTEM : famille de vulnérabilités d'élévation de privilèges du spouleur."
+  remediation: "Supprimer NoWarningNoElevationOnInstall=1, restreindre l'installation de pilotes aux administrateurs (RestrictDriverInstallationToAdministrators=1) et limiter Point and Print à une liste de serveurs approuvés."
+  detection: "Installations de pilotes d'impression (journal PrintService/Admin, événement 316) par des utilisateurs standard."
+  mitre: [{technique: T1068}]
+  references:
+    - https://msrc.microsoft.com/update-guide/vulnerability/CVE-2021-34527
+
+- id: A-GPO-AUTOLOGON-PASSWORD
+  category: anomalies
+  check: anom_gpo_registry_present
+  params: {key: 'machine\software\microsoft\windows nt\currentversion\winlogon\defaultpassword'}
+  severity: critical
+  points: 40
+  source: gpo
+  title: "Mot de passe d'ouverture de session automatique distribué par GPO"
+  description: "Le mot de passe est stocké en clair dans SYSVOL, lisible par tous les utilisateurs authentifiés du domaine, puis dans le registre de chaque machine."
+  remediation: "Retirer la valeur DefaultPassword de la GPO, changer immédiatement le mot de passe du compte concerné et utiliser un compte local géré (LAPS) ou une ouverture automatique sans secret partagé."
+  detection: "Rechercher DefaultPassword dans SYSVOL (Registry.pol et préférences) ; surveiller les ouvertures de session du compte concerné."
+  mitre: [{technique: T1552.002}, {technique: T1552.006, relation: related}]
+  references:
+    - https://learn.microsoft.com/en-us/troubleshoot/windows-server/user-profiles-and-logon/turn-on-automatic-logon
+
+- id: A-LSA-PROTECTION-DC
+  category: anomalies
+  check: anom_gpo_registry_missing
+  params:
+    key: 'machine\system\currentcontrolset\control\lsa\runasppl'
+    good: [1, 2]
+    scope: dcs
+    label: "Protection LSA non imposée par GPO sur les DC"
+  severity: medium
+  points: 10
+  source: gpo
+  title: "Protection LSA (RunAsPPL) non imposée sur les contrôleurs de domaine"
+  description: "Sans processus LSASS protégé, un attaquant administrateur d'un DC lit directement les secrets en mémoire, y compris ceux des administrateurs connectés."
+  remediation: "GPO des contrôleurs de domaine : RunAsPPL = 1 (ou 2 avec verrouillage UEFI) après vérification de la compatibilité des modules LSA tiers (audit préalable)."
+  detection: "Événements 3033/3063 (CodeIntegrity) en mode audit ; accès au processus LSASS (Sysmon 10)."
+  mitre: [{technique: T1003.001}]
+  references:
+    - https://learn.microsoft.com/en-us/windows-server/security/credentials-protection-and-management/configuring-additional-lsa-protection
+
+- id: A-LOCKOUT-DISABLED
+  category: anomalies
+  check: anom_lockout_disabled
+  severity: medium
+  points: 10
+  title: "Verrouillage des comptes désactivé"
+  description: "Aucun seuil de verrouillage : les mots de passe du domaine peuvent être essayés sans limite (attaques par force brute ou par pulvérisation)."
+  remediation: "Définir un seuil de verrouillage (par exemple 10 tentatives, réinitialisation après 15 minutes) dans la stratégie de mot de passe du domaine, en complément de mots de passe longs."
+  detection: "Pics d'échecs d'authentification (4625, 4771) sur de nombreux comptes depuis une même source."
+  mitre: [{technique: T1110}]
+  references:
+    - https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/account-lockout-threshold

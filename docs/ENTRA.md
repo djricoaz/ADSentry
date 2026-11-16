@@ -22,7 +22,8 @@ openssl x509 -in cert.pem -noout -fingerprint -sha1 | tr -d ':' | cut -d= -f2   
 | Permission | Utilisée pour |
 |---|---|
 | Directory.Read.All | utilisateurs, groupes, domaines, organisation |
-| Policy.Read.All | valeurs de sécurité par défaut, autorisations, accès conditionnel |
+| Policy.Read.All | valeurs de sécurité par défaut, autorisations, accès conditionnel, méthodes d'authentification |
+| Policy.Read.DeviceConfiguration | paramètres de jonction et d'inscription des appareils (facultatif : sinon non évalué) |
 | RoleManagement.Read.Directory | attributions de rôles |
 | RoleEligibilitySchedule.Read.Directory, RoleAssignmentSchedule.Read.Directory | PIM (P2) |
 | Application.Read.All | applications, principaux de service, propriétaires, identifiants |

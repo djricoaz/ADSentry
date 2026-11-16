@@ -14,6 +14,7 @@
   "recycle_bin": true,
   "ds_heuristics": null,
   "min_pwd_length": 14,
+  "lockout_threshold": 10,
   "psos": [
    {
     "name": "Services",
@@ -307,7 +308,8 @@
    "registry": {
     "machine\\system\\currentcontrolset\\control\\lsa\\lmcompatibilitylevel": 5,
     "machine\\system\\currentcontrolset\\services\\ntds\\parameters\\ldapserverintegrity": 2,
-    "machine\\software\\microsoft\\windows\\currentversion\\policies\\system\\kdc\\parameters\\enablecbacandarmor": 1
+    "machine\\software\\microsoft\\windows\\currentversion\\policies\\system\\kdc\\parameters\\enablecbacandarmor": 1,
+    "machine\\system\\currentcontrolset\\control\\lsa\\runasppl": 1
    },
    "audit": {
     "Audit Credential Validation": 3,
@@ -462,6 +464,9 @@
   "federated_domains": [],
   "connect_version": "2.5.3.0",
   "pim_available": true,
+  "weak_auth_methods": [],
+  "device_join_all_users": false,
+  "device_join_mfa_required": true,
   "users": [
    {
     "id": "u1",
@@ -594,6 +599,55 @@
     ],
     "grant_controls": [
      "block"
+    ]
+   },
+   {
+    "name": "Admins : MFA résistante à l'hameçonnage",
+    "state": "enabled",
+    "include_roles": [
+     "62e90394-69f5-4237-9190-012177145e10"
+    ],
+    "authentication_strength": "00000000-0000-0000-0000-000000000004"
+   },
+   {
+    "name": "Bloquer le code d'appareil",
+    "state": "enabled",
+    "include_users": [
+     "All"
+    ],
+    "auth_flows": [
+     "deviceCodeFlow"
+    ],
+    "grant_controls": [
+     "block"
+    ]
+   },
+   {
+    "name": "Risque utilisateur élevé",
+    "state": "enabled",
+    "include_users": [
+     "All"
+    ],
+    "user_risk_levels": [
+     "high"
+    ],
+    "grant_controls": [
+     "mfa",
+     "passwordChange"
+    ]
+   },
+   {
+    "name": "Risque de connexion",
+    "state": "enabled",
+    "include_users": [
+     "All"
+    ],
+    "sign_in_risk_levels": [
+     "medium",
+     "high"
+    ],
+    "grant_controls": [
+     "mfa"
     ]
    }
   ]
