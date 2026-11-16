@@ -201,15 +201,22 @@ def test_ollama_client_structured_output(vuln):
 
 def test_api_roundtrip(tmp_path, monkeypatch):
     pytest.importorskip("multipart")
-    monkeypatch.setenv("ADSENTRY_DATA", str(tmp_path))
+    monkeypatch.setenv("ADSENTRY_STATE", str(tmp_path))
+    monkeypatch.setenv("ADSENTRY_DATA", str(tmp_path / "scans"))
     import importlib
 
     from fastapi.testclient import TestClient
 
     import adsentry.api.main as api
+    import adsentry.appliance.auth as auth
+    import adsentry.appliance.config as config
+    import adsentry.appliance.jobs as jobs
 
-    importlib.reload(api)
-    client = TestClient(api.app)
+    for mod in (config, auth, jobs, api):
+        importlib.reload(mod)
+    auth.UserStore().create("admin", "Adm1n-Passw0rd!", auth.Role.admin)
+    client = TestClient(api.app, headers={"X-ADSentry": "1"})
+    client.post("/api/auth/login", json={"username": "admin", "password": "Adm1n-Passw0rd!"})
     payload = json.dumps(load_raw("vulnerable")).encode()
     r = client.post("/api/scans", files={"snapshot": ("s.json", payload, "application/json")})
     assert r.status_code == 200

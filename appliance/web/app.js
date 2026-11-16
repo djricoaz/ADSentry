@@ -33,11 +33,15 @@ const VIEWS = {
   entra: { title: "Entra ID", group: "scan" },
   mitre: { title: "MITRE ATT&CK", group: "scan" },
   report: { title: "Synthèse", group: "scan" },
-  scans: { title: "Historique des scans", group: "admin" },
-  rules: { title: "Catalogue de règles", group: "admin" },
+  scans: { title: "Historique des scans", group: "ref" },
+  rules: { title: "Catalogue de règles", group: "ref" },
+  targets: { title: "Cibles d'audit", group: "admin", admin: true },
+  jobs: { title: "Tâches", group: "admin", admin: true },
+  users: { title: "Comptes et rôles", group: "admin", admin: true },
+  audit: { title: "Journal d'audit", group: "admin", admin: true },
 };
 
-const state = { scans: [], scanId: null, scan: null, domain: null, rules: null, mitre: null, filters: {} };
+const state = { scans: [], scanId: null, scan: null, domain: null, rules: null, mitre: null, filters: {}, user: null, minPassword: 12 };
 const $ = (id) => document.getElementById(id);
 
 // ---------------------------------------------------------------------------- utilitaires
@@ -63,8 +67,14 @@ function svg(tag, attrs = {}, ...children) {
   for (const c of children.flat()) if (c) node.append(c instanceof Node ? c : document.createTextNode(String(c)));
   return node;
 }
-async function api(path, options) {
-  const r = await fetch(`/api${path}`, options);
+async function api(path, options = {}) {
+  const headers = { "X-ADSentry": "1", ...(options.headers || {}) };
+  if (typeof options.body === "string") headers["Content-Type"] = "application/json";
+  const r = await fetch(`/api${path}`, { credentials: "same-origin", ...options, headers });
+  if (r.status === 401 && !path.startsWith("/auth/")) {
+    showAuth("login", { message: "Votre session a expiré ; reconnectez-vous." });
+    throw new Error("Session expirée");
+  }
   if (!r.ok) {
     let msg = r.statusText;
     try { msg = (await r.json()).detail || msg; } catch { /* corps non JSON */ }
@@ -420,8 +430,13 @@ async function viewCompare(params) {
 
 // ---------------------------------------------------------------------------- vues : résultats du scan
 function noScan() {
-  return emptyState("Aucun scan disponible",
-    "Déclarez une cible dans /etc/adsentry/targets.yaml puis lancez « adsentry run <cible> », ou importez un snapshot JSON.");
+  if (state.user?.role === "admin") {
+    return emptyState("Aucun scan disponible",
+      "Déclarez un domaine ou un tenant dans « Cibles d'audit » puis lancez le scan, ou importez un snapshot JSON.",
+      el("a", { class: "btn btn-primary", href: "#/targets" }, "Gérer les cibles d'audit"));
+  }
+  return emptyState("Aucune évaluation disponible",
+    "Aucun rapport n'a encore été produit. Un administrateur de l'appliance doit lancer un premier scan.");
 }
 
 async function viewOverview() {
@@ -581,16 +596,27 @@ async function viewReport() {
         ? el("p", { class: "note" }, `Références écartées car absentes des constats : ${a._controle_qualite.regles_inventees_retirees.join(", ")}`) : null));
     button.textContent = "Régénérer la synthèse";
   };
-  button.addEventListener("click", async () => {
+  const isAdmin = state.user?.role === "admin";
+  const pending = isAdmin && jobsState.list.find((j) => j.kind === "ai" && j.scan_id === state.scanId);
+  const waiting = () => {
     button.disabled = true;
     button.textContent = "Rédaction en cours…";
-    box.replaceChildren(el("p", { class: "muted" }, "Le modèle local rédige la synthèse à partir des constats. Comptez une à cinq minutes."));
-    try { render(await api(`/scans/${state.scanId}/ai-analysis`, { method: "POST" })); toast("Synthèse générée"); }
-    catch (e) { box.replaceChildren(el("p", { class: "note" }, `La synthèse n'a pas pu être générée : ${e.message}. Vérifiez que le service ollama est démarré.`)); button.textContent = "Générer la synthèse"; }
-    finally { button.disabled = false; }
+    box.replaceChildren(el("p", { class: "muted" }, "Le modèle local rédige la synthèse à partir des constats. Comptez une à cinq minutes ; la page se met à jour d'elle-même."));
+  };
+  button.addEventListener("click", async () => {
+    try { await api(`/scans/${state.scanId}/ai-analysis`, { method: "POST" }); waiting(); pollJobs(); }
+    catch (e) { toast(e.message); }
   });
-  try { render(await api(`/scans/${state.scanId}/ai-analysis`)); }
-  catch { box.replaceChildren(el("p", { class: "muted" }, "Aucune synthèse pour ce scan.")); }
+  if (!isAdmin) button.hidden = true;
+  if (pending?.active) waiting();
+  else {
+    try { render(await api(`/scans/${state.scanId}/ai-analysis`)); }
+    catch {
+      box.replaceChildren(pending?.status === "failed"
+        ? el("p", { class: "note" }, `La synthèse n'a pas pu être générée : ${pending.error}. Vérifiez que le service ollama est démarré.`)
+        : el("p", { class: "muted" }, isAdmin ? "Aucune synthèse pour ce scan." : "Aucune synthèse pour ce scan ; un administrateur peut la générer."));
+    }
+  }
   return el("section", { class: "section" },
     el("div", { class: "section-head" }, el("div", {}, el("h2", {}, "Synthèse de l'audit"),
       el("p", {}, "Rédigée sur l'appliance par le modèle local à partir des seuls constats ; aucune donnée ne sort.")), button),
@@ -611,8 +637,20 @@ function viewScans() {
         el("td", {}, s.domain), el("td", { class: "num" }, s.global_score), el("td", { class: "num" }, s.findings),
         el("td", { class: "hide-sm" }, s.ai ? "Disponible" : el("span", { class: "muted" }, "—")),
         el("td", { class: "num" }, el("a", { href: "#/overview", onclick: () => loadScan(s.id) }, "Ouvrir"),
-          prev ? [" ", el("a", { href: `#/compare?base=${prev.id}&target=${s.id}`, onclick: () => { state.domain = s.domain; } }, "Comparer")] : null));
+          prev ? [" ", el("a", { href: `#/compare?base=${prev.id}&target=${s.id}`, onclick: () => { state.domain = s.domain; } }, "Comparer")] : null,
+          state.user?.role === "admin" ? [" ", el("button", { class: "btn btn-link danger", onclick: () => deleteScan(s) }, "Supprimer")] : null));
     })))));
+}
+
+async function deleteScan(s) {
+  if (!confirm(`Supprimer le rapport ${s.domain} du ${fmtDate(s.collected_at)} ? Cette action est définitive.`)) return;
+  try {
+    await api(`/scans/${s.id}`, { method: "DELETE" });
+    if (state.scanId === s.id) { state.scanId = null; state.scan = null; }
+    await refreshScans();
+    toast("Rapport supprimé");
+    softRender();
+  } catch (e) { toast(e.message); }
 }
 
 async function viewRules() {
@@ -648,13 +686,518 @@ async function viewRules() {
   ];
 }
 
+// ---------------------------------------------------------------------------- formulaires
+function field(label, input, hint) {
+  const id = input.id || `f-${Math.random().toString(36).slice(2, 9)}`;
+  input.id = id;
+  return el("div", { class: "field" }, el("label", { for: id }, label), input, hint ? el("p", { class: "hint" }, hint) : null);
+}
+const input = (attrs = {}) => el("input", { type: "text", autocomplete: "off", spellcheck: "false", ...attrs });
+function check(label, checked, hint) {
+  const box = el("input", { type: "checkbox", checked });
+  return { box, node: el("label", { class: "check" }, box, el("span", {}, label, hint ? el("small", {}, hint) : null)) };
+}
+function formError() { return el("p", { class: "form-error", role: "alert", hidden: true }); }
+function showError(node, msg) { node.textContent = msg; node.hidden = !msg; }
+async function busy(btn, label, fn) {
+  const old = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = label;
+  try { return await fn(); } finally { btn.disabled = false; btn.textContent = old; }
+}
+function openPanel(kicker, title, body) {
+  $("drawer-id").textContent = kicker;
+  $("drawer-title").textContent = title;
+  $("drawer-body").replaceChildren(body);
+  $("drawer").classList.add("open");
+  $("drawer").setAttribute("aria-hidden", "false");
+  setTimeout(() => body.querySelector("input:not([disabled]), select, textarea")?.focus(), 50);
+}
+const fmtDateTime = (iso) => fmtDate(iso, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+function fmtDuration(a, b) {
+  if (!a) return "—";
+  const s = Math.max(0, Math.round(((b ? new Date(b) : new Date()) - new Date(a)) / 1000));
+  return s < 60 ? `${s} s` : s < 3600 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min`;
+}
+
+// ---------------------------------------------------------------------------- planification
+const DAYS = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
+const isNum = (v) => /^\d+$/.test(v);
+function describeCron(c) {
+  if (!c) return "Lancement manuel uniquement";
+  const [m, h, dom, mon, dow] = c.split(" ");
+  const at = isNum(m) && isNum(h) ? `${h.padStart(2, "0")}:${m.padStart(2, "0")}` : null;
+  if (at && mon === "*" && dom === "*" && dow === "*") return `Chaque jour à ${at}`;
+  if (at && mon === "*" && dom === "*" && dow === "1-5") return `Du lundi au vendredi à ${at}`;
+  if (at && mon === "*" && dom === "*" && /^[0-6]$/.test(dow)) return `Chaque ${DAYS[+dow]} à ${at}`;
+  if (at && mon === "*" && isNum(dom) && dow === "*") return `Le ${dom} de chaque mois à ${at}`;
+  return `Planification personnalisée (${c})`;
+}
+function scheduleEditor(cron) {
+  const freq = el("select", {},
+    el("option", { value: "manual" }, "Manuel (pas de planification)"), el("option", { value: "daily" }, "Chaque jour"),
+    el("option", { value: "weekdays" }, "Du lundi au vendredi"), el("option", { value: "weekly" }, "Chaque semaine"),
+    el("option", { value: "monthly" }, "Chaque mois"), el("option", { value: "custom" }, "Personnalisée (cron)"));
+  const time = el("input", { type: "time", value: "02:17", "aria-label": "Heure" });
+  const day = el("select", { "aria-label": "Jour" }, DAYS.map((d, i) => el("option", { value: i }, d)));
+  const dom = el("input", { type: "number", min: 1, max: 28, value: 1, "aria-label": "Jour du mois", class: "narrow" });
+  const custom = input({ placeholder: "17 2 * * *", "aria-label": "Expression cron" });
+  const preview = el("p", { class: "hint" });
+  const [m, h, d, , w] = (cron || "").split(" ");
+  if (!cron) freq.value = "manual";
+  else {
+    if (isNum(m) && isNum(h)) time.value = `${h.padStart(2, "0")}:${m.padStart(2, "0")}`;
+    const simple = isNum(m) && isNum(h) && cron.split(" ")[3] === "*";
+    if (simple && d === "*" && w === "*") freq.value = "daily";
+    else if (simple && d === "*" && w === "1-5") freq.value = "weekdays";
+    else if (simple && d === "*" && /^[0-6]$/.test(w)) { freq.value = "weekly"; day.value = w; }
+    else if (simple && isNum(d) && w === "*") { freq.value = "monthly"; dom.value = d; }
+    else { freq.value = "custom"; custom.value = cron; }
+  }
+  const value = () => {
+    const [hh, mm] = (time.value || "02:17").split(":").map((x) => String(+x));
+    return { manual: "", daily: `${mm} ${hh} * * *`, weekdays: `${mm} ${hh} * * 1-5`, weekly: `${mm} ${hh} * * ${day.value}`,
+      monthly: `${mm} ${hh} ${dom.value} * *`, custom: custom.value.trim() }[freq.value];
+  };
+  const sync = () => {
+    const f = freq.value;
+    time.hidden = f === "manual" || f === "custom";
+    day.hidden = f !== "weekly";
+    dom.hidden = f !== "monthly";
+    custom.hidden = f !== "custom";
+    preview.textContent = f === "custom" ? "Format : minute heure jour mois jour_semaine (heure de l'appliance)" : describeCron(value());
+  };
+  [freq, time, day, dom, custom].forEach((x) => x.addEventListener("input", sync));
+  sync();
+  return { value, node: el("div", { class: "field" }, el("label", {}, "Planification"),
+    el("div", { class: "inline-fields" }, freq, day, dom, time, custom), preview) };
+}
+
+// ---------------------------------------------------------------------------- tâches : suivi en direct
+const KIND = { scan: "Scan", test: "Test de connexion", ai: "Synthèse IA" };
+const STATUS = { queued: "En attente", running: "En cours", succeeded: "Terminé", failed: "Échec", cancelled: "Annulé" };
+const jobsState = { list: [], worker: null, timer: null, known: new Map() };
+const statusBadge = (s) => el("span", { class: `status status-${s}` }, STATUS[s] || s);
+function progressBar(job) {
+  return el("div", { class: "progress", role: "progressbar", "aria-valuemin": 0, "aria-valuemax": 100, "aria-valuenow": job.progress },
+    el("i", { style: `width:${job.status === "queued" ? 0 : job.progress}%` }));
+}
+async function pollJobs() {
+  clearTimeout(jobsState.timer);
+  if (state.user?.role !== "admin") return;
+  let data;
+  try { data = await api("/jobs?limit=100"); } catch { jobsState.timer = setTimeout(pollJobs, 10000); return; }
+  jobsState.list = data.jobs;
+  jobsState.worker = data.worker;
+  let finishedScan = false;
+  for (const j of data.jobs) {
+    const before = jobsState.known.get(j.id);
+    if (before && before !== j.status && !j.active) {
+      if (j.kind === "scan" && j.status === "succeeded") {
+        finishedScan = true;
+        toast(`Scan « ${j.target} » terminé : score ${j.result.global_score}/100, ${plural(j.result.findings, "constat", "constats")}`);
+      } else if (j.kind === "test") toast(j.status === "succeeded" ? `Connexion à « ${j.target} » réussie` : `Test de « ${j.target} » en échec`);
+      else if (j.kind === "ai" && j.status === "succeeded") toast("Synthèse IA disponible");
+      else if (j.status === "failed") toast(`${KIND[j.kind]} en échec : ${j.error || ""}`);
+    }
+    jobsState.known.set(j.id, j.status);
+  }
+  const active = data.jobs.filter((j) => j.active);
+  const pill = $("job-indicator");
+  pill.hidden = !active.length;
+  pill.querySelector("span").textContent = active.length ? `${plural(active.length, "tâche", "tâches")} en cours` : "";
+  if (finishedScan) await refreshScans();
+  const view = currentView();
+  if (["targets", "jobs"].includes(view) || (view === "report" && active.some((j) => j.kind === "ai"))) softRender();
+  if (finishedScan && ["dashboard", "scans", "overview"].includes(view)) softRender();
+  jobsState.timer = setTimeout(pollJobs, active.length || ["targets", "jobs"].includes(view) ? 2500 : 15000);
+}
+function workerBanner() {
+  const w = jobsState.worker;
+  if (!w || w.online) return null;
+  return el("div", { class: "banner" }, el("strong", {}, "Le planificateur ne répond pas. "),
+    "Les scans demandés restent en attente tant qu'il n'est pas démarré : service « worker » de l'appliance, ",
+    "ou « adsentry serve --worker » en installation simple.");
+}
+
+// ---------------------------------------------------------------------------- vue : cibles d'audit
+async function viewTargets() {
+  const [targets] = await Promise.all([api("/targets"), jobsState.worker ? null : pollJobs()]);
+  const add = el("button", { class: "btn btn-primary", onclick: () => openTargetForm() }, "Ajouter une cible");
+  const head = el("div", { class: "page-actions" },
+    el("p", { class: "muted" }, "Domaines Active Directory et tenants Entra ID audités par l'appliance. Les mots de passe, secrets et certificats sont chiffrés sur l'appliance et ne sont jamais réaffichés."),
+    add);
+  if (!targets.length) {
+    return [workerBanner(), el("section", { class: "section" }, emptyState("Aucune cible d'audit",
+      "Déclarez un domaine Active Directory (compte standard en lecture seule) et/ou un tenant Entra ID (application d'audit en lecture seule), puis lancez le premier scan.", add))];
+  }
+  return [workerBanner(), head, el("div", { class: "cards" }, targets.map(targetCard))];
+}
+function targetCard(t) {
+  const job = t.active_job, last = t.last_scan;
+  const sources = [
+    t.ad ? el("div", {}, el("span", { class: "tag" }, "Active Directory"), ` ${t.ad.domain} via ${t.ad.dc}`, el("span", { class: "muted" }, ` · ${t.ad.username}${t.ad.ldaps ? " · LDAPS" : ""}`)) : null,
+    t.entra ? el("div", {}, el("span", { class: "tag" }, "Entra ID"), ` tenant ${t.entra.tenant_id}`, el("span", { class: "muted" }, ` · ${t.entra.auth === "secret" ? "secret client" : "certificat"}`)) : null,
+  ];
+  const scanBtn = el("button", { class: "btn btn-primary", disabled: !!job }, "Lancer le scan");
+  scanBtn.addEventListener("click", () => busy(scanBtn, "Envoi…", async () => {
+    try { await api(`/targets/${t.name}/scan`, { method: "POST" }); toast(`Scan de « ${t.name} » demandé`); pollJobs(); }
+    catch (e) { toast(e.message); }
+  }));
+  const testBtn = el("button", { class: "btn btn-secondary", disabled: !!job }, "Tester la connexion");
+  testBtn.addEventListener("click", () => busy(testBtn, "Envoi…", async () => {
+    try { await api(`/targets/${t.name}/test`, { method: "POST" }); pollJobs(); } catch (e) { toast(e.message); }
+  }));
+  const del = el("button", { class: "btn btn-link danger" }, "Supprimer");
+  del.addEventListener("click", async () => {
+    if (!confirm(`Supprimer la cible « ${t.name} » et ses secrets ? Les rapports déjà produits sont conservés.`)) return;
+    try { await api(`/targets/${t.name}`, { method: "DELETE" }); toast("Cible supprimée"); softRender(); } catch (e) { toast(e.message); }
+  });
+  let lastLine;
+  if (last) {
+    const scan = last.scan_id && state.scans.find((s) => s.id === last.scan_id);
+    lastLine = el("div", {}, statusBadge(last.status), " ", fmtDateTime(last.finished_at || last.created_at),
+      last.status === "succeeded" && last.result?.global_score !== undefined ? ` · score ${last.result.global_score}/100 · ${plural(last.result.findings, "constat", "constats")}` : "",
+      last.status === "failed" ? el("div", { class: "note small" }, last.error) : null,
+      scan ? [" · ", el("a", { href: "#/overview", onclick: () => loadScan(scan.id) }, "Ouvrir le rapport")] : null);
+  } else lastLine = el("span", { class: "muted" }, "Jamais scannée");
+  const lastTest = jobsState.list.find((j) => j.target === t.name && j.kind === "test" && !j.active);
+  return el("section", { class: "section card" },
+    el("div", { class: "section-head" }, el("h2", {}, t.name),
+      el("div", { class: "actions" }, el("button", { class: "btn btn-link", onclick: () => openTargetForm(t) }, "Modifier"), del)),
+    el("div", { class: "section-body" },
+      el("div", { class: "sources" }, sources),
+      el("dl", { class: "facts" },
+        el("dt", {}, "Planification"), el("dd", {}, describeCron(t.schedule)),
+        el("dt", {}, "Synthèse IA"), el("dd", {}, t.ai_analysis ? "Générée après chaque scan" : "Sur demande"),
+        el("dt", {}, "Dernier scan"), el("dd", {}, lastLine),
+        lastTest ? [el("dt", {}, "Dernier test"), el("dd", {}, statusBadge(lastTest.status), " ", fmtDateTime(lastTest.finished_at),
+          lastTest.status === "failed" ? el("div", { class: "note small" }, lastTest.error) : null)] : null),
+      job ? el("div", { class: "job-live" },
+        el("div", { class: "job-live-head" }, el("strong", {}, `${KIND[job.kind]} — ${STATUS[job.status]}`), el("span", {}, `${job.progress} %`)),
+        progressBar(job), el("p", { class: "muted small" }, job.step)) : null,
+      el("div", { class: "actions" }, scanBtn, testBtn)));
+}
+
+function openTargetForm(t = null) {
+  const err = formError();
+  const name = input({ value: t?.name || "", disabled: !!t, placeholder: "corp", maxlength: 40, required: true });
+  // Active Directory
+  const adOn = check("Auditer un domaine Active Directory", t ? !!t.ad : true);
+  const ad = t?.ad || {};
+  const domain = input({ value: ad.domain || "", placeholder: "corp.local" });
+  const dc = input({ value: ad.dc || "", placeholder: "10.0.0.10 ou dc01.corp.local" });
+  const user = input({ value: ad.username || "", placeholder: "svc-adsentry" });
+  const pwd = el("input", { type: "password", autocomplete: "new-password",
+    placeholder: ad.password_set ? "Enregistré — laisser vide pour conserver" : "" });
+  const ldaps = check("LDAPS (636)", !!ad.ldaps, "Recommandé si le DC présente un certificat valide");
+  const sysvol = check("Lire les GPO dans SYSVOL (SMB 445)", ad.sysvol ?? true);
+  const probes = check("Sondes réseau sur les DC", ad.probes ?? true, "Signature LDAP/SMB, channel binding, services exposés");
+  const adBox = el("fieldset", { class: "sub" },
+    el("div", { class: "grid-fields" }, field("Domaine DNS", domain), field("Contrôleur de domaine", dc),
+      field("Compte d'audit", user, "Utilisateur standard, sans privilège"), field("Mot de passe", pwd)),
+    ldaps.node, sysvol.node, probes.node);
+  // Entra ID
+  const en = t?.entra || {};
+  const enOn = check("Auditer un tenant Entra ID", !!t?.entra);
+  const tenant = input({ value: en.tenant_id || "", placeholder: "00000000-0000-0000-0000-000000000000" });
+  const client = input({ value: en.client_id || "", placeholder: "ID de l'application d'audit" });
+  const authSel = el("select", {}, el("option", { value: "certificate" }, "Certificat (recommandé)"), el("option", { value: "secret" }, "Secret client"));
+  authSel.value = en.auth || "certificate";
+  let pem = null;
+  const pemFile = el("input", { type: "file", accept: ".pem,.crt,.key" });
+  pemFile.addEventListener("change", async () => { pem = pemFile.files[0] ? await pemFile.files[0].text() : null; });
+  const thumb = input({ value: en.thumbprint || "", placeholder: "Empreinte SHA-1 du certificat" });
+  const secret = el("input", { type: "password", autocomplete: "new-password", placeholder: en.client_secret_set ? "Enregistré — laisser vide pour conserver" : "" });
+  const connect = input({ value: en.connect_version || "", placeholder: "2.4.27.0 (facultatif)" });
+  const certFields = el("div", { class: "grid-fields" },
+    field("Fichier PEM (clé privée + certificat)", pemFile, en.certificate_set ? "Un certificat est enregistré ; choisir un fichier pour le remplacer" : null),
+    field("Empreinte", thumb));
+  const secretFields = el("div", { class: "grid-fields" }, field("Secret client", secret));
+  const enBox = el("fieldset", { class: "sub" },
+    el("div", { class: "grid-fields" }, field("ID du tenant", tenant), field("ID de l'application", client),
+      field("Authentification", authSel), field("Version d'Entra Connect", connect, "Non exposée par Microsoft Graph")),
+    certFields, secretFields, el("p", { class: "hint" }, "Permissions Graph en lecture seule : voir docs/ENTRA.md."));
+  const sched = scheduleEditor(t ? t.schedule : "17 2 * * *");
+  const ai = check("Générer la synthèse IA après chaque scan", !!t?.ai_analysis, "Modèle local ; 1 à 5 minutes sur CPU");
+  const sync = () => {
+    adBox.hidden = !adOn.box.checked;
+    enBox.hidden = !enOn.box.checked;
+    certFields.hidden = authSel.value !== "certificate";
+    secretFields.hidden = authSel.value !== "secret";
+  };
+  [adOn.box, enOn.box, authSel].forEach((x) => x.addEventListener("change", sync));
+  sync();
+
+  const payload = () => ({
+    name: name.value.trim(), schedule: sched.value() || null, ai_analysis: ai.box.checked,
+    ad: adOn.box.checked ? { domain: domain.value.trim(), dc: dc.value.trim(), username: user.value.trim(), password: pwd.value || null,
+      ldaps: ldaps.box.checked, sysvol: sysvol.box.checked, probes: probes.box.checked } : null,
+    entra: enOn.box.checked ? { tenant_id: tenant.value.trim(), client_id: client.value.trim(), auth: authSel.value,
+      client_secret: secret.value || null, certificate_pem: pem, thumbprint: thumb.value.trim() || null,
+      connect_version: connect.value.trim() || null } : null,
+  });
+  const save = el("button", { class: "btn btn-primary", type: "submit" }, t ? "Enregistrer" : "Créer la cible");
+  const saveTest = el("button", { class: "btn btn-secondary", type: "button" }, "Enregistrer et tester");
+  const submit = async (thenTest) => {
+    showError(err, "");
+    const body = payload();
+    try {
+      await api(t ? `/targets/${t.name}` : "/targets", { method: t ? "PUT" : "POST", body: JSON.stringify(body) });
+      if (thenTest) await api(`/targets/${body.name}/test`, { method: "POST" });
+      closeDrawer();
+      toast(thenTest ? "Cible enregistrée ; test de connexion lancé" : "Cible enregistrée");
+      pollJobs();
+      softRender();
+    } catch (e) { showError(err, e.message); }
+  };
+  const form = el("form", { class: "form", novalidate: true },
+    field("Nom de la cible", name, "Minuscules, chiffres et tirets ; sert à nommer les rapports"),
+    adOn.node, adBox, enOn.node, enBox, sched.node, ai.node, err,
+    el("div", { class: "actions" }, save, saveTest));
+  form.addEventListener("submit", (e) => { e.preventDefault(); busy(save, "Enregistrement…", () => submit(false)); });
+  saveTest.addEventListener("click", () => busy(saveTest, "Enregistrement…", () => submit(true)));
+  openPanel(t ? "Modifier la cible" : "Nouvelle cible d'audit", t ? t.name : "Ajouter une cible", form);
+}
+
+// ---------------------------------------------------------------------------- vue : tâches
+async function viewJobs() {
+  await pollJobs();
+  const list = jobsState.list;
+  if (!list.length) return [workerBanner(), el("section", { class: "section" }, emptyState("Aucune tâche", "Les scans, tests de connexion et synthèses IA lancés depuis la console apparaîtront ici avec leur avancement."))];
+  return [workerBanner(), section("Tâches récentes", "Conservées 30 jours", el("div", { class: "table-wrap" }, el("table", { class: "data" },
+    el("thead", {}, el("tr", {}, el("th", {}, "Demandée"), el("th", {}, "Tâche"), el("th", {}, "Cible"),
+      el("th", { class: "hide-sm" }, "Par"), el("th", {}, "État"), el("th", { class: "hide-sm" }, "Étape"), el("th", { class: "num hide-sm" }, "Durée"))),
+    el("tbody", {}, list.map((j) => el("tr", { class: "clickable", tabindex: "0", onclick: () => openJob(j), onkeydown: (e) => { if (e.key === "Enter") openJob(j); } },
+      el("td", {}, fmtDateTime(j.created_at)), el("td", {}, KIND[j.kind]),
+      el("td", {}, j.target || state.scans.find((s) => s.id === j.scan_id)?.domain || j.scan_id || "—"),
+      el("td", { class: "hide-sm" }, j.trigger === "schedule" ? el("span", { class: "muted" }, "Planification") : j.requested_by),
+      el("td", {}, j.active ? el("div", { class: "cell-progress" }, statusBadge(j.status), progressBar(j)) : statusBadge(j.status)),
+      el("td", { class: "hide-sm muted" }, j.status === "failed" ? j.error : j.step),
+      el("td", { class: "num hide-sm" }, fmtDuration(j.started_at, j.finished_at))))))))];
+}
+function openJob(j) {
+  const cancel = j.status === "queued" ? el("button", { class: "btn btn-secondary" }, "Annuler la tâche") : null;
+  cancel?.addEventListener("click", () => busy(cancel, "Annulation…", async () => {
+    try { await api(`/jobs/${j.id}/cancel`, { method: "POST" }); closeDrawer(); pollJobs(); } catch (e) { toast(e.message); }
+  }));
+  const scan = j.scan_id && j.kind === "scan" && state.scans.find((s) => s.id === j.scan_id);
+  openPanel(`${KIND[j.kind]} · ${j.id}`, j.target || j.scan_id || "", el("div", {},
+    el("div", { class: "kv" }, statusBadge(j.status), el("span", {}, `Demandée le ${fmtDateTime(j.created_at)}`),
+      el("span", {}, j.trigger === "schedule" ? "par la planification" : `par ${j.requested_by}`), el("span", {}, `Durée ${fmtDuration(j.started_at, j.finished_at)}`)),
+    j.active ? [el("h3", {}, j.step), progressBar(j)] : null,
+    j.error ? [el("h3", {}, "Erreur"), el("p", { class: "note" }, j.error)] : null,
+    j.kind === "test" && Object.keys(j.result || {}).length ? [el("h3", {}, "Résultat"), el("ul", { class: "plain" },
+      Object.entries(j.result).map(([k, v]) => el("li", {}, statusBadge(v.ok ? "succeeded" : "failed"), ` ${k === "ad" ? "Active Directory" : "Entra ID"} : ${v.detail}`)))] : null,
+    scan ? el("p", {}, el("a", { href: "#/overview", onclick: () => { closeDrawer(); loadScan(scan.id); } }, "Ouvrir le rapport produit")) : null,
+    el("h3", {}, "Journal"),
+    el("ol", { class: "log" }, j.log.map((l) => el("li", { class: `log-${l.level}` }, el("time", {}, new Date(l.at).toLocaleTimeString("fr-FR")), l.msg))),
+    cancel));
+}
+
+// ---------------------------------------------------------------------------- vue : comptes
+const ROLES = { admin: "Administrateur", viewer: "Lecteur" };
+async function viewUsers() {
+  const list = await api("/users");
+  const add = el("button", { class: "btn btn-primary", onclick: () => openUserForm() }, "Ajouter un compte");
+  const rows = list.map((u) => {
+    const me = u.username.toLowerCase() === state.user.username.toLowerCase();
+    const role = el("select", { "aria-label": `Rôle de ${u.username}`, disabled: me }, Object.entries(ROLES).map(([k, v]) => el("option", { value: k }, v)));
+    role.value = u.role;
+    role.addEventListener("change", async () => {
+      try { await api(`/users/${u.username}`, { method: "PATCH", body: JSON.stringify({ role: role.value }) }); toast("Rôle modifié ; les sessions du compte ont été fermées"); }
+      catch (e) { toast(e.message); role.value = u.role; }
+    });
+    const toggle = el("button", { class: "btn btn-link", disabled: me }, u.disabled ? "Réactiver" : "Désactiver");
+    toggle.addEventListener("click", async () => {
+      try { await api(`/users/${u.username}`, { method: "PATCH", body: JSON.stringify({ disabled: !u.disabled }) }); softRender(); } catch (e) { toast(e.message); }
+    });
+    const del = el("button", { class: "btn btn-link danger", disabled: me }, "Supprimer");
+    del.addEventListener("click", async () => {
+      if (!confirm(`Supprimer le compte « ${u.username} » ?`)) return;
+      try { await api(`/users/${u.username}`, { method: "DELETE" }); toast("Compte supprimé"); softRender(); } catch (e) { toast(e.message); }
+    });
+    return el("tr", { class: u.disabled ? "disabled" : null },
+      el("td", {}, el("strong", {}, u.username), me ? el("span", { class: "muted" }, " (vous)") : null, el("div", { class: "muted small" }, u.display_name)),
+      el("td", {}, role),
+      el("td", { class: "hide-sm" }, u.last_login ? fmtDateTime(u.last_login) : el("span", { class: "muted" }, "Jamais")),
+      el("td", {}, el("span", { class: `status status-${u.disabled ? "cancelled" : "succeeded"}` }, u.disabled ? "Désactivé" : "Actif")),
+      el("td", { class: "num" }, el("button", { class: "btn btn-link", onclick: () => openUserForm(u) }, "Mot de passe"), toggle, del));
+  });
+  return [
+    el("div", { class: "page-actions" }, el("p", { class: "muted" },
+      "Administrateur : cibles, secrets, scans et comptes. Lecteur : consultation des évaluations, tableaux de bord et rapports."), add),
+    section("Comptes de la console", plural(list.length, "compte", "comptes"), el("div", { class: "table-wrap" }, el("table", { class: "data" },
+      el("thead", {}, el("tr", {}, el("th", {}, "Compte"), el("th", {}, "Rôle"), el("th", { class: "hide-sm" }, "Dernière connexion"), el("th", {}, "État"), el("th", {}, ""))),
+      el("tbody", {}, rows)))),
+  ];
+}
+function passwordFields(minLen) {
+  const pwd = el("input", { type: "password", autocomplete: "new-password", minlength: minLen, required: true });
+  const confirmPwd = el("input", { type: "password", autocomplete: "new-password", required: true });
+  return { pwd, confirmPwd, nodes: [field("Mot de passe", pwd, `${minLen} caractères minimum, 3 types de caractères parmi minuscules, majuscules, chiffres et symboles`), field("Confirmation", confirmPwd)],
+    check: () => pwd.value === confirmPwd.value ? "" : "Les deux mots de passe diffèrent" };
+}
+function openUserForm(u = null) {
+  const err = formError();
+  const pf = passwordFields(state.minPassword);
+  const username = input({ autocomplete: "off", maxlength: 64 });
+  const display = input({ maxlength: 80 });
+  const role = el("select", {}, Object.entries(ROLES).map(([k, v]) => el("option", { value: k }, v)));
+  role.value = "viewer"; // moindre privilège par défaut
+  const save = el("button", { class: "btn btn-primary", type: "submit" }, u ? "Réinitialiser" : "Créer le compte");
+  const form = el("form", { class: "form" },
+    u ? el("p", { class: "muted" }, "Les sessions ouvertes de ce compte seront fermées.") : [field("Identifiant", username), field("Nom affiché", display), field("Rôle", role)],
+    pf.nodes, err, el("div", { class: "actions" }, save));
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    showError(err, pf.check());
+    if (pf.check()) return;
+    busy(save, "Enregistrement…", async () => {
+      try {
+        if (u) await api(`/users/${u.username}`, { method: "PATCH", body: JSON.stringify({ password: pf.pwd.value }) });
+        else await api("/users", { method: "POST", body: JSON.stringify({ username: username.value.trim(), display_name: display.value, role: role.value, password: pf.pwd.value }) });
+        closeDrawer();
+        toast(u ? "Mot de passe réinitialisé" : "Compte créé");
+        softRender();
+      } catch (e2) { showError(err, e2.message); }
+    });
+  });
+  openPanel(u ? "Réinitialiser le mot de passe" : "Nouveau compte", u ? u.username : "Ajouter un compte", form);
+}
+function openPasswordForm() {
+  const err = formError();
+  const current = el("input", { type: "password", autocomplete: "current-password", required: true });
+  const pf = passwordFields(state.minPassword);
+  const save = el("button", { class: "btn btn-primary", type: "submit" }, "Changer le mot de passe");
+  const form = el("form", { class: "form" }, field("Mot de passe actuel", current), pf.nodes, err, el("div", { class: "actions" }, save));
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    showError(err, pf.check());
+    if (pf.check()) return;
+    busy(save, "Enregistrement…", async () => {
+      try { await api("/auth/password", { method: "POST", body: JSON.stringify({ current: current.value, new: pf.pwd.value }) }); closeDrawer(); toast("Mot de passe changé"); }
+      catch (e2) { showError(err, e2.message); }
+    });
+  });
+  openPanel("Mon compte", state.user.display_name, form);
+}
+
+// ---------------------------------------------------------------------------- vue : journal d'audit
+const EVENTS = {
+  setup: "Initialisation de l'appliance", login: "Connexion", logout: "Déconnexion", login_failed: "Échec de connexion", login_locked: "Compte temporairement bloqué",
+  password_changed: "Changement de mot de passe", user_created: "Compte créé", user_updated: "Compte modifié", user_deleted: "Compte supprimé",
+  target_created: "Cible créée", target_updated: "Cible modifiée", target_deleted: "Cible supprimée", job_scan: "Scan demandé",
+  job_test: "Test de connexion demandé", job_ai: "Synthèse IA demandée", job_cancelled: "Tâche annulée",
+  snapshot_imported: "Snapshot importé", scan_deleted: "Rapport supprimé",
+};
+async function viewAudit() {
+  const list = await api("/audit?limit=500");
+  if (!list.length) return el("section", { class: "section" }, emptyState("Journal vide", "Les actions de la console sont journalisées ici."));
+  const details = (e) => Object.entries(e).filter(([k]) => !["at", "event", "user"].includes(k))
+    .map(([k, v]) => `${k} : ${Array.isArray(v) ? v.join(", ") : v}`).join(" · ");
+  return section("Journal d'audit de la console", "500 derniers événements", el("div", { class: "table-wrap" }, el("table", { class: "data" },
+    el("thead", {}, el("tr", {}, el("th", {}, "Date"), el("th", {}, "Compte"), el("th", {}, "Événement"), el("th", { class: "hide-sm" }, "Détails"))),
+    el("tbody", {}, list.map((e) => el("tr", { class: e.event.startsWith("login_") ? "warn" : null },
+      el("td", {}, fmtDateTime(e.at)), el("td", {}, e.user || "—"), el("td", {}, EVENTS[e.event] || e.event),
+      el("td", { class: "hide-sm muted" }, details(e))))))));
+}
+
+// ---------------------------------------------------------------------------- connexion
+function showAuth(mode, info = {}) {
+  clearTimeout(jobsState.timer);
+  state.user = null;
+  document.body.dataset.role = "";
+  const err = formError();
+  if (info.message) showError(err, info.message);
+  const username = input({ autocomplete: "username", required: true, maxlength: 64 });
+  let form;
+  if (mode === "setup") {
+    const token = input({ required: true, autocomplete: "off" });
+    const display = input({ maxlength: 80 });
+    const pf = passwordFields(info.min_password || 12);
+    const go = el("button", { class: "btn btn-primary", type: "submit" }, "Créer l'administrateur");
+    form = el("form", { class: "form" },
+      el("h1", {}, "Première configuration"),
+      el("p", { class: "muted" }, "Créez le compte administrateur de la console. Le jeton d'installation est affiché dans le journal du service API et enregistré dans le fichier setup-token du dossier de données (sur l'appliance : sudo cat /var/lib/adsentry/setup-token)."),
+      field("Jeton d'installation", token), field("Identifiant", username), field("Nom affiché", display), pf.nodes, err, go);
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      showError(err, pf.check());
+      if (pf.check()) return;
+      busy(go, "Création…", async () => {
+        try {
+          const user = await api("/auth/setup", { method: "POST", body: JSON.stringify({ token: token.value, username: username.value.trim(), display_name: display.value, password: pf.pwd.value }) });
+          startApp(user, { first: true });
+        } catch (e2) { showError(err, e2.message); }
+      });
+    });
+  } else {
+    const pwd = el("input", { type: "password", autocomplete: "current-password", required: true });
+    const go = el("button", { class: "btn btn-primary", type: "submit" }, "Se connecter");
+    form = el("form", { class: "form" }, el("h1", {}, "Connexion"), field("Identifiant", username), field("Mot de passe", pwd), err, go);
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      busy(go, "Connexion…", async () => {
+        try { startApp(await api("/auth/login", { method: "POST", body: JSON.stringify({ username: username.value.trim(), password: pwd.value }) })); }
+        catch (e2) { showError(err, e2.message); pwd.value = ""; pwd.focus(); }
+      });
+    });
+  }
+  $("auth").replaceChildren(el("div", { class: "auth-card" },
+    el("div", { class: "brand" }, el("span", {}, "ADSentry")), form,
+    el("p", { class: "muted small" }, "Audit Active Directory, PKI et Entra ID en lecture seule.")));
+  document.body.classList.add("signed-out");
+  setTimeout(() => form.querySelector("input")?.focus(), 30);
+}
+async function startApp(user, { first = false } = {}) {
+  state.user = user;
+  document.body.dataset.role = user.role;
+  document.body.classList.remove("signed-out");
+  $("auth").replaceChildren();
+  $("user-name").textContent = user.display_name;
+  $("user-role").textContent = user.role_label;
+  await refreshScans();
+  if (first) location.hash = "#/targets";
+  else if (user.role === "admin" && !state.scans.length && !location.hash) location.hash = "#/targets";
+  route();
+  pollJobs();
+}
+async function logout() {
+  try { await api("/auth/logout", { method: "POST" }); } catch { /* déjà déconnecté */ }
+  state.scans = []; state.scan = null; state.scanId = null;
+  jobsState.known.clear();
+  closeDrawer();
+  $("drawer-body").replaceChildren();
+  $("view").replaceChildren();
+  showAuth("login");
+}
+
 // ---------------------------------------------------------------------------- routeur
 const RENDER = { dashboard: viewDashboard, maturity: viewMaturity, compare: viewCompare, overview: viewOverview,
-  findings: viewFindings, pki: viewPki, entra: viewEntra, mitre: viewMitre, report: viewReport, scans: viewScans, rules: viewRules };
+  findings: viewFindings, pki: viewPki, entra: viewEntra, mitre: viewMitre, report: viewReport, scans: viewScans, rules: viewRules,
+  targets: viewTargets, jobs: viewJobs, users: viewUsers, audit: viewAudit };
+
+function currentView() {
+  const path = (location.hash.slice(2) || "dashboard").split("?")[0];
+  return RENDER[path] && (!VIEWS[path].admin || state.user?.role === "admin") ? path : "dashboard";
+}
+let rendering = false;
+async function softRender() {
+  // Réaffiche la vue courante sans la remettre en haut de page (mises à jour en direct)
+  if (rendering || !state.user || $("drawer").classList.contains("open")) return;
+  rendering = true;
+  try {
+    const [, query] = (location.hash.slice(2) || "").split("?");
+    const content = await RENDER[currentView()](new URLSearchParams(query || ""));
+    $("view").replaceChildren(...[content].flat().filter(Boolean));
+  } catch { /* la prochaine actualisation réessaiera */ } finally { rendering = false; }
+}
 
 async function route() {
-  const [path, query] = (location.hash.slice(2) || "dashboard").split("?");
-  const name = RENDER[path] ? path : "dashboard";
+  if (!state.user) return;
+  const [, query] = (location.hash.slice(2) || "dashboard").split("?");
+  const name = currentView();
   const meta = VIEWS[name];
   document.querySelectorAll("nav a").forEach((a) => a.classList.toggle("active", a.dataset.view === name));
   $("page-title").textContent = meta.title;
@@ -668,7 +1211,7 @@ async function route() {
   view.replaceChildren(el("p", { class: "muted" }, "Chargement…"));
   try {
     const content = await RENDER[name](new URLSearchParams(query || ""));
-    view.replaceChildren(...[content].flat());
+    view.replaceChildren(...[content].flat().filter(Boolean));
   } catch (e) {
     view.replaceChildren(el("section", { class: "section" }, emptyState("Impossible d'afficher cette page", e.message)));
   }
@@ -685,6 +1228,8 @@ $("drawer-close").addEventListener("click", closeDrawer);
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeDrawer(); closeSidebar(); } });
 $("scan-select").addEventListener("change", async (e) => { await loadScan(e.target.value); route(); });
 $("domain-select").addEventListener("change", (e) => { state.domain = e.target.value; route(); });
+$("logout-btn").addEventListener("click", logout);
+$("password-btn").addEventListener("click", openPasswordForm);
 $("upload").addEventListener("change", async (e) => {
   const form = new FormData();
   form.append("snapshot", e.target.files[0]);
@@ -699,6 +1244,15 @@ $("upload").addEventListener("change", async (e) => {
 });
 window.addEventListener("hashchange", route);
 
-refreshScans().then(route).catch((e) => {
-  $("view").replaceChildren(el("section", { class: "section" }, emptyState("API injoignable", e.message)));
-});
+(async () => {
+  try {
+    const st = await api("/auth/status");
+    state.minPassword = st.min_password;
+    if (st.setup_required) showAuth("setup", st);
+    else if (!st.user) showAuth("login", st);
+    else await startApp(st.user);
+  } catch (e) {
+    $("auth").replaceChildren(el("div", { class: "auth-card" }, emptyState("API injoignable", e.message)));
+    document.body.classList.add("signed-out");
+  }
+})();

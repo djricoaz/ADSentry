@@ -1,8 +1,8 @@
 # Pile ADSentry de l'appliance. Lancée par systemd (adsentry.service) depuis /opt/adsentry.
 #
-#   caddy   : HTTPS (443) + authentification, sert le tableau de bord et relaie /api
-#   api     : FastAPI (réseau interne uniquement)
-#   worker  : planificateur des scans (seul service qui sort vers l'AD et Microsoft Graph)
+#   caddy   : HTTPS (443), sert la console web et relaie /api
+#   api     : FastAPI (réseau interne uniquement) : comptes et rôles, cibles, file des scans
+#   worker  : exécute les scans demandés depuis la console ou planifiés (seul service qui sort vers l'AD et Graph)
 #   ollama  : modèle IA local (CPU), réseau interne ; accès Internet uniquement pour télécharger les modèles
 #
 # Variables : /opt/adsentry/.env (généré par adsentry-setup)
@@ -30,6 +30,8 @@ services:
       - /var/lib/adsentry:/var/lib/adsentry
     environment:
       ADSENTRY_MODEL: ${ADSENTRY_MODEL:-adsentry-analyst}
+      ADSENTRY_COOKIE_SECURE: "1"
+      ADSENTRY_TRUSTED_PROXIES: "*"   # seul Caddy atteint l'API (réseau interne)
       TZ: ${TZ:-Africa/Tunis}
     networks: [internal]
 
@@ -91,8 +93,6 @@ services:
       - /var/lib/adsentry/caddy:/data
     environment:
       ADSENTRY_HOSTNAME: ${ADSENTRY_HOSTNAME:-adsentry.local}
-      ADSENTRY_ADMIN_USER: ${ADSENTRY_ADMIN_USER:-admin}
-      ADSENTRY_ADMIN_HASH: ${ADSENTRY_ADMIN_HASH:?définir ADSENTRY_ADMIN_HASH via adsentry-setup}
       ADSENTRY_TLS: ${ADSENTRY_TLS:-internal}
     depends_on: [api]
     networks: [internal, edge]

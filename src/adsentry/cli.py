@@ -8,6 +8,7 @@ adsentry explain result.json                 # analyse IA locale (Ollama)
 adsentry mitre-check                         # valide les IDs ATT&CK du catalogue
 adsentry serve | worker | run <cible>        # appliance
 adsentry secret set <nom>                    # secret chiffré (mot de passe du compte d'audit...)
+adsentry user add <identifiant> --role admin # comptes de la console web (admin | viewer)
 """
 
 from __future__ import annotations
@@ -25,6 +26,8 @@ from .scoring import maturity_level
 app = typer.Typer(help="ADSentry – audit AD + PKI + Entra ID, MITRE ATT&CK, IA locale", no_args_is_help=True)
 secret_app = typer.Typer(help="Secrets chiffrés de l'appliance")
 app.add_typer(secret_app, name="secret")
+user_app = typer.Typer(help="Comptes de la console web (rôles : admin, viewer)")
+app.add_typer(user_app, name="user")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
@@ -165,16 +168,44 @@ def mitre_check():
 
 
 @app.command()
-def serve(host: str = "127.0.0.1", port: int = 8000):
-    """Démarre l'API (dashboard)."""
+def serve(
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    worker: bool = typer.Option(False, "--worker", help="Exécuter aussi les scans dans ce processus (sans Docker)"),
+    web: Path = typer.Option(None, help="Dossier du tableau de bord à servir (ex. appliance/web)"),
+    tls_cert: Path = typer.Option(None, help="Certificat TLS (PEM) pour servir directement en HTTPS"),
+    tls_key: Path = typer.Option(None, help="Clé privée TLS (PEM)"),
+):
+    """Démarre l'API et la console web."""
+    import os
+
     import uvicorn
 
-    uvicorn.run("adsentry.api.main:app", host=host, port=port, reload=False, proxy_headers=True)
+    if worker:
+        os.environ["ADSENTRY_EMBEDDED_WORKER"] = "1"
+    if web:
+        os.environ["ADSENTRY_WEB_DIR"] = str(web.resolve())
+    # Derrière Caddy (réseau Docker interne) : faire confiance aux en-têtes X-Forwarded-*.
+    trusted = os.environ.get("ADSENTRY_TRUSTED_PROXIES", "127.0.0.1")
+    if host not in ("127.0.0.1", "localhost", "::1") and not tls_cert:
+        typer.secho(
+            "Attention : console exposée en HTTP clair. Utilisez --tls-cert/--tls-key ou un proxy HTTPS.", fg="yellow"
+        )
+    uvicorn.run(
+        "adsentry.api.main:app",
+        host=host,
+        port=port,
+        reload=False,
+        proxy_headers=True,
+        forwarded_allow_ips=trusted,
+        ssl_certfile=str(tls_cert) if tls_cert else None,
+        ssl_keyfile=str(tls_key) if tls_key else None,
+    )
 
 
 @app.command()
 def worker():
-    """Planificateur : exécute les cibles de /etc/adsentry/targets.yaml selon leur cron."""
+    """Planificateur : exécute les scans demandés depuis la console et ceux planifiés (cron)."""
     from .appliance.runner import worker_loop
 
     worker_loop()
@@ -190,6 +221,65 @@ def run(target: str):
     if t is None:
         raise typer.BadParameter(f"Cible inconnue : {target}")
     typer.echo(f"Résultat : {run_target(t)}")
+
+
+@user_app.command("add")
+def user_add(
+    username: str,
+    role: str = typer.Option("viewer", help="admin (gestion complète) ou viewer (consultation)"),
+    display_name: str = typer.Option("", "--name", help="Nom affiché"),
+    password: str = typer.Option(
+        ..., prompt=True, hide_input=True, confirmation_prompt=True, envvar="ADSENTRY_USER_PASSWORD"
+    ),
+):
+    """Crée un compte de la console web."""
+    from .appliance.auth import AuthError, Role, UserStore, setup_token_path
+
+    try:
+        UserStore().create(username, password, Role(role), display_name)
+    except (AuthError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    setup_token_path().unlink(missing_ok=True)
+    typer.echo(f"Compte « {username} » créé ({role}).")
+
+
+@user_app.command("list")
+def user_list():
+    """Liste les comptes de la console."""
+    from .appliance.auth import UserStore
+
+    for u in UserStore().list():
+        state = " (désactivé)" if u.disabled else ""
+        typer.echo(f"{u.username:<24} {u.role.value:<8} {u.display_name}{state}")
+
+
+@user_app.command("passwd")
+def user_passwd(
+    username: str,
+    password: str = typer.Option(
+        ..., prompt=True, hide_input=True, confirmation_prompt=True, envvar="ADSENTRY_USER_PASSWORD"
+    ),
+):
+    """Réinitialise le mot de passe d'un compte (et le réactive)."""
+    from .appliance.auth import AuthError, UserStore
+
+    try:
+        UserStore().update(username, password=password, disabled=False)
+    except AuthError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(f"Mot de passe de « {username} » réinitialisé.")
+
+
+@user_app.command("delete")
+def user_delete(username: str):
+    """Supprime un compte."""
+    from .appliance.auth import AuthError, UserStore
+
+    try:
+        UserStore().delete(username)
+    except AuthError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(f"Compte « {username} » supprimé.")
 
 
 @secret_app.command("set")

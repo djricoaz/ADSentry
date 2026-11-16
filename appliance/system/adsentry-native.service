@@ -1,0 +1,37 @@
+# ADSentry sans Docker : console web + exécution des scans dans un seul service (cf. docs/INSTALL-LINUX.md).
+# Installation : /opt/adsentry/venv (pip install "adsentry[appliance]"), utilisateur système « adsentry ».
+[Unit]
+Description=ADSentry - console web et planificateur des scans
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=adsentry
+Group=adsentry
+Environment=ADSENTRY_STATE=/var/lib/adsentry
+Environment=ADSENTRY_CONFIG=/etc/adsentry
+Environment=ADSENTRY_COOKIE_SECURE=1
+ExecStart=/opt/adsentry/venv/bin/adsentry serve --worker --host 0.0.0.0 --port 8443 \
+  --web /opt/adsentry/src/appliance/web \
+  --tls-cert /etc/adsentry/tls/cert.pem --tls-key /etc/adsentry/tls/key.pem
+Restart=on-failure
+RestartSec=5
+
+# Durcissement
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+ReadWritePaths=/var/lib/adsentry
+ReadOnlyPaths=/etc/adsentry
+CapabilityBoundingSet=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
