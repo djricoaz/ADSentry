@@ -40,3 +40,29 @@ def test_load_targets(tmp_path):
     targets = load_targets(tmp_path / "targets.yaml")
     assert [t.name for t in targets] == ["corp", "cloud"]
     assert targets[0].ad.sysvol is True and targets[1].entra.tenant_id == "t"
+
+
+@pytest.mark.parametrize(
+    "given",
+    [
+        "Administrator",
+        "CLOUD\\Administrator",
+        "cloud.lab\\Administrator",
+        "Administrator@cloud.lab",
+        "  CLOUD\\Administrator ",
+    ],
+)
+def test_ad_account_formats(given):
+    from adsentry.appliance.config import AdTarget
+
+    t = AdTarget(domain="cloud.lab", dc="dc01.cloud.lab", username=given, password_secret="s")
+    assert t.username == "Administrator"
+
+
+def test_ad_account_empty_rejected():
+    from pydantic import ValidationError
+
+    from adsentry.appliance.config import AdTarget
+
+    with pytest.raises(ValidationError):
+        AdTarget(domain="cloud.lab", dc="dc", username="CLOUD\\", password_secret="s")

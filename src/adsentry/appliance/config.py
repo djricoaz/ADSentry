@@ -58,6 +58,23 @@ class AdTarget(BaseModel):
     sysvol: bool = True
     probes: bool = True
 
+    @field_validator("username")
+    @classmethod
+    def _bare_account(cls, v: str) -> str:
+        """Accepte « DOMAINE\\compte », « compte@domaine.local » ou « compte » ; conserve le seul nom du compte.
+
+        Les collecteurs ajoutent eux-mêmes le domaine de la cible (NTLM « domaine\\compte », SMB compte + domaine) :
+        un préfixe saisi par l'utilisateur produirait « domaine\\DOMAINE\\compte », refusé à l'authentification.
+        """
+        v = v.strip()
+        if "\\" in v:
+            v = v.rsplit("\\", 1)[1]
+        elif "@" in v:
+            v = v.split("@", 1)[0]
+        if not v:
+            raise ValueError("Compte d'audit vide")
+        return v
+
 
 class EntraTarget(BaseModel):
     tenant_id: str
