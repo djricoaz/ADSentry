@@ -1201,7 +1201,7 @@ function openTargetForm(t = null) {
   const probes = check("Sondes réseau sur les DC", ad.probes ?? true, "Signature LDAP/SMB, channel binding, services exposés");
   const adBox = el("fieldset", { class: "sub" },
     el("div", { class: "grid-fields" }, field("Domaine DNS", domain), field("Contrôleur de domaine", dc),
-      field("Compte d'audit", user, "Utilisateur standard, sans privilège"), field("Mot de passe", pwd)),
+      field("Compte d'audit", user, "Utilisateur standard, sans privilège ; « compte », « DOMAINE\\compte » ou « compte@domaine »"), field("Mot de passe", pwd)),
     ldaps.node, sysvol.node, probes.node);
   // Entra ID
   const en = t?.entra || {};
