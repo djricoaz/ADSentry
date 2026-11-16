@@ -72,6 +72,11 @@ def collect_target(target: Target, secrets: SecretStore, progress=_noop) -> Snap
         ldap.connect()
         progress(10, "Collecte de l'annuaire (comptes, groupes, ACL, PKI, approbations)")
         snap = ldap.collect()
+        if ldap.missing_attributes:
+            progress.warn(
+                "Attributs absents du schéma (extension non installée), non collectés : "
+                + ", ".join(sorted(ldap.missing_attributes))
+            )
         if ad.sysvol:
             from ..collectors.sysvol_collector import SysvolCollector
 

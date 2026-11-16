@@ -206,6 +206,7 @@ class LdapCollector:
         self.use_ldaps = use_ldaps
         self.conn = None
         self.dn_to_sid: dict[str, str] = {}
+        self.missing_attributes: set[str] = set()  # absents du schéma : non collectés (inconnu ≠ vulnérable)
 
     # -- connexion -------------------------------------------------------------
     def connect(self) -> None:
@@ -226,6 +227,25 @@ class LdapCollector:
         self.schema_dn = info["schemaNamingContext"][0]
         self.pks_dn = f"CN=Public Key Services,CN=Services,{self.config_dn}"
 
+    def _known_attributes(self, attrs: list[str]) -> list[str]:
+        """Retire les attributs absents du schéma du domaine (extension non installée, ex. LAPS historique).
+
+        ldap3 refuse toute la requête si un seul attribut est inconnu ; l'attribut retiré reste non collecté
+        et les règles qui en dépendent le traitent comme absent.
+        """
+        schema = getattr(getattr(self.conn, "server", None), "schema", None)
+        types = getattr(schema, "attribute_types", None)
+        if not types:
+            return attrs
+        keep = []
+        for a in attrs:
+            if a in ("*", "+") or a in types:
+                keep.append(a)
+            elif a not in self.missing_attributes:
+                self.missing_attributes.add(a)
+                log.info("Attribut absent du schéma, non collecté : %s", a)
+        return keep
+
     def _search(
         self, base: str, flt: str, attrs: list[str], with_sd: bool = False, scope: str = "SUBTREE"
     ) -> list[dict]:
@@ -236,6 +256,7 @@ class LdapCollector:
         controls = security_descriptor_control(sdflags=0x07) if with_sd else None
         if with_sd:
             attrs = [*attrs, "nTSecurityDescriptor"]
+        attrs = self._known_attributes(attrs)
         out = []
         try:
             gen = self.conn.extend.standard.paged_search(
