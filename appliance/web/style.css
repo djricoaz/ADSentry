@@ -168,10 +168,12 @@ dl.facts { display: grid; grid-template-columns: auto 1fr; gap: .45rem 1rem; mar
 dl.facts dt { color: var(--ink-2); } dl.facts dd { margin: 0; text-align: right; font-weight: 500; }
 
 /* MITRE */
-.matrix { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(150px, 1fr); gap: .5rem; overflow-x: auto;
-  padding: 1rem 1.1rem 1.1rem; }
+.matrix { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: .9rem .75rem;
+  padding: 1rem 1.1rem 1.1rem; align-items: start; }
+.mitre-tools { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; padding-bottom: 0; }
+.tcell { overflow-wrap: anywhere; }
 .tactic h3 { font-size: .8rem; font-weight: 600; margin: 0 0 .5rem; padding-bottom: .4rem;
-  border-bottom: 2px solid var(--ink); min-height: 2.6em; }
+  border-bottom: 2px solid var(--ink); }
 .tactic h3 span { display: block; font-weight: 400; color: var(--ink-3); }
 .tcell { display: block; width: 100%; text-align: left; font: inherit; font-size: .8rem; color: var(--ink);
   border: 1px solid var(--rule); border-left: 3px solid var(--c, var(--rule-strong)); border-radius: 3px;
@@ -179,7 +181,7 @@ dl.facts dt { color: var(--ink-2); } dl.facts dd { margin: 0; text-align: right;
 .tcell:hover { border-color: var(--ink-3); border-left-color: var(--c); }
 .tcell b { display: block; font-weight: 600; color: var(--ink-2); font-size: .75rem; }
 .tcell em { font-style: normal; color: var(--ink-3); font-size: .75rem; }
-.tactic.empty h3 { color: var(--ink-3); border-bottom-color: var(--rule-strong); font-weight: 500; }
+.tactic.no-tech h3 { color: var(--ink-3); border-bottom-color: var(--rule-strong); font-weight: 500; }
 
 /* Synthèse */
 .report { max-width: 72ch; }
@@ -590,20 +592,12 @@ ol.log .log-error { color: var(--sev-critical); }
 .topo-svg .edge.main { stroke-width: 2; opacity: .8; }
 .topo-svg .arrowhead { fill: var(--fc); }
 .topo-svg .node { cursor: pointer; }
-.topo-svg .node circle:first-child, .topo-svg .node rect, .topo-svg .node path { fill: #fff; stroke: #8794a6; stroke-width: 1.6; }
-.topo-svg .node .glyph { font-size: 10px; font-weight: 700; fill: var(--ink-2); pointer-events: none; }
-.topo-svg .node .label { font-size: 12px; fill: var(--ink); paint-order: stroke; stroke: #fbfcfd; stroke-width: 3px; }
-.topo-svg .node.exposed > :first-child { stroke: var(--sev-high); fill: #fff4ec; }
-.topo-svg .node.tier0 > :first-child { stroke: var(--sev-critical); fill: #fbeceb; stroke-width: 2.2; }
 .topo-svg .node.tier0 .label { font-weight: 600; }
-.topo-svg .node.lowpriv > :first-child { fill: var(--sev-critical); stroke: var(--sev-critical); }
-.topo-svg .node.lowpriv .glyph { fill: #fff; }
 .topo-svg .node.disabled { opacity: .5; }
 .topo-svg .flag-dot { fill: #7c3aed; stroke: #fff; stroke-width: 1.5; }
 .topo-svg.dimmed .node:not(.on), .topo-svg.dimmed .edge:not(.on) { opacity: .12; }
 .topo-svg.dimmed .edge.on { opacity: 1; stroke-width: 2.6; }
 .topo-svg .node:focus { outline: none; }
-.topo-svg .node:focus > :first-child { stroke-width: 3; }
 .topo-legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: .78rem; color: var(--ink-2); padding: .5rem .9rem; border-top: 1px solid var(--rule); }
 .topo-legend span { display: inline-flex; align-items: center; gap: .35rem; }
 .lg { width: 11px; height: 11px; border-radius: 50%; border: 2px solid; display: inline-block; }
@@ -674,3 +668,66 @@ pre.code { margin: .7rem 0 0; max-height: 360px; overflow: auto; background: #1f
   padding: .7rem .8rem; font: .76rem/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: pre; }
 .drawer-body .kv .small { color: var(--ink-2); }
 pre.code code { background: none; color: inherit; padding: 0; border: 0; font: inherit; }
+
+/* topologie : nœuds lisibles, groupes repliables, mode agrandi et fenêtre séparée */
+.topo-svg .node .disc { fill: #fff; stroke: #8794a6; stroke-width: 1.8; }
+.topo-svg .node .icon { fill: none; stroke: currentColor; stroke-width: 1.5; color: #4f5b6b; pointer-events: none; }
+.topo-svg .node .label { font-size: 13px; fill: var(--ink); paint-order: stroke; stroke: #fbfcfd; stroke-width: 4px; stroke-linejoin: round; }
+.topo-svg .node.exposed .disc { stroke: var(--sev-high); fill: #fff4ec; stroke-width: 2.2; }
+.topo-svg .node.exposed .icon { color: #9a3412; }
+.topo-svg .node.tier0 .disc { stroke: var(--sev-critical); fill: #fbeceb; stroke-width: 2.6; }
+.topo-svg .node.tier0 .icon { color: var(--sev-critical); }
+.topo-svg .node.lowpriv .disc { fill: var(--sev-critical); stroke: var(--sev-critical); }
+.topo-svg .node.lowpriv .icon { color: #fff; }
+.topo-svg .node:focus .disc, .topo-svg .node:hover .disc { stroke-width: 3.2; }
+.topo-svg .badge { cursor: pointer; }
+.topo-svg .badge rect { fill: var(--accent); stroke: #fff; stroke-width: 1.5; }
+.topo-svg .badge text { fill: #fff; font-size: 11px; font-weight: 700; }
+.topo-svg .badge:hover rect { fill: #264d73; }
+.topo-svg .col-heads text { font-size: 13px; }
+.lg-badge { display: inline-block; background: var(--accent); color: #fff; border-radius: 9px; font-size: .7rem; padding: 0 .4rem; }
+.topo-main.expanded { position: fixed; inset: 0; z-index: 45; margin: 0; border-radius: 0; display: flex; flex-direction: column; }
+.topo-main.expanded .topo-canvas { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.topo-main.expanded .topo-svg { flex: 1; height: auto; min-height: 0; }
+body.frame-mode .sidebar, body.frame-mode .topbar, body.frame-mode .scrim { display: none !important; }
+body.frame-mode .main { margin-left: 0; }
+body.frame-mode #view { max-width: none; padding: .6rem; }
+body.frame-mode .topo-main.framed { margin: 0; }
+body.frame-mode .topo-svg { height: calc(100vh - 190px); }
+.topo-svg .edge.bundled { stroke-width: 1; opacity: .45; }
+.topo-svg .edge.trunk { stroke-width: 3; opacity: .85; }
+.topo-svg .junction { fill: #5b7a9b; }
+.topo-svg .trunk-label { font-size: 11px; fill: #5b7a9b; font-weight: 600; paint-order: stroke; stroke: #fbfcfd; stroke-width: 3px; }
+
+/* ------------------------------------------------------------------ lecture fluide : sections repliables, cadres, retour */
+.section-head { align-items: center; }
+.section-head .head-text { min-width: 0; }
+.section-head .head-text h2 + p { margin-top: .15rem; }
+.fold-btn { margin-left: auto; flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; border: 0;
+  border-radius: var(--radius); background: transparent; color: var(--ink-3); cursor: pointer; }
+.fold-btn:hover { background: #eef1f5; color: var(--ink); }
+.fold-btn svg { width: 16px; height: 16px; transition: transform .15s; }
+.section.collapsed > :not(.section-head) { display: none !important; }
+.section.collapsed .fold-btn svg { transform: rotate(-90deg); }
+.section.collapsed .section-head { border-bottom: 0; }
+.tactic h3 { cursor: pointer; user-select: none; }
+.tactic h3::after { content: "▾"; float: right; color: var(--ink-3); font-weight: 400; }
+.tactic.folded h3::after { content: "▸"; }
+.tactic.folded .tcell { display: none; }
+.actions.inline { margin: 0; }
+.drawer-head { align-items: flex-start; }
+.drawer-back { padding: .2rem .3rem; margin-right: .3rem; white-space: nowrap; }
+.frame-modal { position: fixed; inset: 0; z-index: 48; background: rgba(15, 23, 33, .55); display: grid; place-items: center; padding: 2.5vh 2vw; }
+.frame-modal[hidden] { display: none; }
+.frame-box { width: 100%; height: 100%; background: var(--surface); border-radius: 8px; overflow: hidden; display: flex;
+  flex-direction: column; box-shadow: 0 20px 60px rgba(0, 0, 0, .35); }
+.frame-head { display: flex; align-items: center; gap: .75rem; padding: .55rem .8rem .55rem 1.1rem; border-bottom: 1px solid var(--rule); }
+.frame-head h2 { font-size: 1rem; margin: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frame-box iframe { flex: 1; width: 100%; border: 0; background: var(--canvas); }
+body.frame-open { overflow: hidden; }
+@media (prefers-reduced-motion: reduce) { .fold-btn svg { transition: none; } }
+/* Les textes des graphes n'héritent pas du contour des icônes (règle générale « svg ») */
+.topo-svg, .trust-svg { stroke: none; }
+.topo-svg text, .trust-svg text { stroke: none; }
+.topo-svg .node .label, .trust-svg .trust-label { stroke: #fbfcfd; }
+.topo-svg .col-heads text { fill: var(--ink-2); font-weight: 600; }

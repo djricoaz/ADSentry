@@ -106,9 +106,36 @@ function toast(msg) {
   setTimeout(() => t.classList.remove("show"), 2600);
 }
 function section(title, sub, ...body) {
-  return el("section", { class: "section" },
-    el("div", { class: "section-head" }, el("h2", {}, title), sub ? el("p", {}, sub) : null), ...body);
+  const key = `adsentry.fold.${(location.hash.split("?")[0] || "#/").slice(2)}.${title}`;
+  const box = el("section", { class: `section foldable${localStorage.getItem(key) ? " collapsed" : ""}` });
+  const toggle = el("button", { class: "fold-btn", type: "button", "aria-expanded": String(!box.classList.contains("collapsed")),
+    title: "Replier ou déplier cette section" }, svg("svg", { viewBox: "0 0 16 16" }, svg("path", { d: "M4 6l4 4 4-4" })));
+  toggle.addEventListener("click", () => {
+    const folded = box.classList.toggle("collapsed");
+    toggle.setAttribute("aria-expanded", String(!folded));
+    folded ? localStorage.setItem(key, "1") : localStorage.removeItem(key);
+  });
+  box.append(el("div", { class: "section-head" }, el("div", { class: "head-text" }, el("h2", {}, title), sub ? el("p", {}, sub) : null), toggle), ...body.flat().filter(Boolean));
+  return box;
 }
+
+// ---------------------------------------------------------------------------- cadres (iframe) refermables
+function openFrame(path, title) {
+  const url = `${location.pathname}${path}${path.includes("?") ? "&" : "?"}frame=1`;
+  $("frame-title").textContent = title;
+  $("frame-pop").href = url;
+  $("frame-iframe").src = url;
+  $("frame-modal").hidden = false;
+  document.body.classList.add("frame-open");
+  $("frame-close").focus();
+}
+function closeFrame() {
+  $("frame-modal").hidden = true;
+  $("frame-iframe").src = "about:blank";
+  document.body.classList.remove("frame-open");
+}
+window.closeFrame = closeFrame; // appelé depuis le cadre lui-même (même origine)
+const inFrame = () => new URLSearchParams(location.hash.split("?")[1] || "").get("frame") === "1";
 function emptyState(title, text, action) {
   return el("div", { class: "empty" }, el("h2", {}, title), el("p", {}, text), action || null);
 }
@@ -239,6 +266,7 @@ const bySeverity = (a, b) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b
 
 // ---------------------------------------------------------------------------- panneau de détail
 async function openFinding(f, scanId = state.scanId) {
+  pushDrawer();
   const rules = await getRules();
   const rule = rules.find((r) => r.id === f.rule_id) || {};
   const ref = await getMitre();
@@ -319,9 +347,26 @@ function scriptBox(scanId, ruleId) {
   api(url).then((data) => { s = data; render(); }).catch((e) => box.replaceChildren(el("p", { class: "note small" }, e.message)));
   return box;
 }
+const drawerHistory = [];
+function pushDrawer() {
+  // mémorise le contenu affiché avant d'en ouvrir un autre (bouton « Retour »)
+  if (!$("drawer").classList.contains("open") || !$("drawer-body").firstChild) return;
+  drawerHistory.push({ id: $("drawer-id").textContent, title: $("drawer-title").textContent, body: [...$("drawer-body").childNodes] });
+  $("drawer-back").hidden = false;
+}
+function drawerBack() {
+  const prev = drawerHistory.pop();
+  if (!prev) return;
+  $("drawer-id").textContent = prev.id;
+  $("drawer-title").textContent = prev.title;
+  $("drawer-body").replaceChildren(...prev.body);
+  $("drawer-back").hidden = !drawerHistory.length;
+}
 function closeDrawer() {
   $("drawer").classList.remove("open");
   $("drawer").setAttribute("aria-hidden", "true");
+  drawerHistory.length = 0;
+  $("drawer-back").hidden = true;
 }
 
 // ---------------------------------------------------------------------------- données partagées
@@ -340,6 +385,7 @@ async function loadScan(id) {
   $("side-date").textContent = `Collecté le ${fmtDate(state.scan.collected_at, { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}`;
   $("nav-findings").textContent = state.scan.findings.length;
   $("scan-select").value = id;
+  localStorage.setItem("adsentry.scan", id); // rapport consulté retrouvé après rechargement
   return state.scan;
 }
 async function refreshScans(selectId) {
@@ -350,7 +396,9 @@ async function refreshScans(selectId) {
   $("domain-select").replaceChildren(...domains.map((d) => el("option", { value: d }, d)));
   state.domain = state.domain && domains.includes(state.domain) ? state.domain : domains[0] || null;
   if (state.domain) $("domain-select").value = state.domain;
-  const id = selectId || state.scanId || state.scans[0]?.id;
+  const saved = localStorage.getItem("adsentry.scan");
+  const known = (x) => x && state.scans.some((s) => s.id === x);
+  const id = [selectId, state.scanId, saved].find(known) || state.scans[0]?.id;
   if (id) await loadScan(id);
   $("side-foot").textContent = `${state.scans.length} rapport(s) conservé(s) sur l'appliance`;
 }
@@ -481,7 +529,7 @@ async function viewDashboard() {
       el("div", { class: "actions" },
         el("a", { class: "btn btn-primary", href: "#priorities", onclick: (e) => { e.preventDefault(); $("priorities")?.scrollIntoView({ behavior: "smooth" }); } }, "Voir les priorités"),
         el("a", { class: "btn btn-secondary", href: "#/report", onclick: () => loadScan(k.last_scan_id) }, "Synthèse du dernier scan"),
-        el("a", { class: "btn btn-link", href: "#/help" }, "Comment lire ce tableau de bord ?"))));
+        el("a", { class: "btn btn-link", href: "#/help", onclick: (e) => { e.preventDefault(); openFrame("#/help", "Guide de lecture"); } }, "Comment lire ce tableau de bord ?"))));
 
   // Indicateurs cliquables
   const series = (fn) => tl.map(fn);
@@ -910,6 +958,7 @@ function viewEntra() {
     : el("div", { class: "empty" }, el("p", {}, "Aucun constat sur le tenant.")));
 }
 
+const mitreState = { showEmpty: true, sort: "severity" };
 async function viewMitre() {
   const s = state.scan;
   if (!s) return noScan();
@@ -919,24 +968,83 @@ async function viewMitre() {
   const worst = (fs) => fs.map((f) => f.severity).sort((a, b) => SEV_ORDER.indexOf(a) - SEV_ORDER.indexOf(b))[0];
   const exportBtn = el("a", { class: "btn btn-secondary", href: `/api/scans/${state.scanId}/navigator`, download: "attack-layer.json" },
     svg("svg", { class: "ico" }, svg("use", { href: "#i-download" })), "Exporter pour ATT&CK Navigator");
-  if (!ref) {
-    return section("Techniques observées", "Référentiel ATT&CK absent : lancer « adsentry mitre-check »", el("div", { class: "section-body" },
-      Object.keys(byTech).sort().map((t) => el("span", { class: "tech" }, t))));
+  const techIds = Object.keys(byTech).sort();
+  const name = (t) => ref?.techniques[t]?.name || "Technique hors du référentiel hors ligne";
+  const tacticsOf = (t) => (ref?.techniques[t]?.tactics || []).map((id) => TACTICS_FR[id] || ref.tactics.find((x) => x.id === id)?.name || id);
+  const openTech = (t) => {
+    const fs = [...byTech[t]].sort(bySeverity);
+    openPanel(`Technique ATT&CK · ${t}`, name(t), el("div", {},
+      el("div", { class: "kv" }, sev(worst(fs)), el("span", {}, plural(fs.length, "constat", "constats")), el("span", {}, tacticsOf(t).join(", "))),
+      el("h3", {}, "Constats du rapport"),
+      el("ul", { class: "plain" }, fs.map((f) => el("li", {}, sev(f.severity), " ",
+        el("a", { href: "#", onclick: (e) => { e.preventDefault(); openFinding(f); } }, f.title), el("span", { class: "rule-id small" }, ` ${f.rule_id}`)))),
+      el("div", { class: "actions" },
+        el("a", { class: "btn btn-secondary", href: `https://attack.mitre.org/techniques/${t.replace(".", "/")}/`, target: "_blank", rel: "noopener" }, "Fiche MITRE (site externe)"),
+        el("a", { class: "btn btn-link", href: "#/findings", onclick: () => { state.filters = { q: t }; closeDrawer(); } }, "Voir dans la liste des constats"))));
+  };
+
+  // --- matrice : une carte par tactique, qui passe à la ligne pour tenir dans l'écran
+  let matrix = null;
+  if (ref) {
+    const showEmpty = el("input", { type: "checkbox", checked: mitreState.showEmpty });
+    showEmpty.addEventListener("change", () => { mitreState.showEmpty = showEmpty.checked; softRender(); });
+    const columns = ref.tactics.map((tac) => {
+      const techs = techIds.filter((t) => ref.techniques[t]?.tactics.includes(tac.id));
+      if (!techs.length && !mitreState.showEmpty) return null;
+      const card = el("div", { class: `tactic${techs.length ? "" : " no-tech"}` });
+      const fold = () => card.classList.toggle("folded");
+      const head = el("h3", { tabindex: "0", title: "Replier ou déplier", onclick: fold, onkeydown: (e) => { if (e.key === "Enter") fold(); } },
+        TACTICS_FR[tac.id] || tac.name, el("span", {}, plural(techs.length, "technique", "techniques")));
+      card.append(head, ...techs.map((t) => el("button", { class: "tcell", style: `--c:var(--sev-${worst(byTech[t])})`,
+        title: `${byTech[t].length} constat(s) – sévérité maximale : ${SEV[worst(byTech[t])]}`, onclick: () => openTech(t) },
+      el("b", {}, t), name(t), el("em", {}, ` · ${byTech[t].length}`))));
+      return card;
+    }).filter(Boolean);
+    const foldAll = (folded) => columns.forEach((c) => c.classList.toggle("folded", folded));
+    const emptyCount = ref.tactics.length - columns.filter((c) => !c.classList.contains("no-tech")).length;
+    matrix = section("Techniques ATT&CK exploitables dans ce périmètre", `ATT&CK v${ref.version} – couleur = sévérité la plus haute ; cliquez pour voir les constats`,
+      el("div", { class: "section-body mitre-tools" },
+        el("div", { class: "legend" }, SEV_ORDER.slice(0, 4).map((k) => el("span", {}, el("i", { class: "swatch", style: `--c:var(--sev-${k})` }), SEV[k]))),
+        el("label", { class: "check inline" }, showEmpty, el("span", {}, `Afficher les tactiques sans constat (${emptyCount})`)),
+        el("span", { class: "actions inline" },
+          el("button", { class: "btn btn-link", type: "button", onclick: () => foldAll(true) }, "Tout replier"),
+          el("button", { class: "btn btn-link", type: "button", onclick: () => foldAll(false) }, "Tout déplier"), exportBtn)),
+      el("div", { class: "matrix" }, columns));
   }
-  const columns = ref.tactics.map((tac) => {
-    const techs = Object.keys(byTech).filter((t) => ref.techniques[t]?.tactics.includes(tac.id)).sort();
-    return el("div", { class: `tactic${techs.length ? "" : " empty"}` },
-      el("h3", {}, TACTICS_FR[tac.id] || tac.name, el("span", {}, plural(techs.length, "technique", "techniques"))),
-      techs.map((t) => el("button", { class: "tcell", style: `--c:var(--sev-${worst(byTech[t])})`,
-        title: `${byTech[t].length} constat(s) – sévérité maximale : ${SEV[worst(byTech[t])]}`,
-        onclick: () => { state.filters = { q: t }; location.hash = "#/findings"; } },
-      el("b", {}, t), ref.techniques[t].name, el("em", {}, ` · ${byTech[t].length}`))));
-  });
-  return section("Techniques ATT&CK exploitables dans ce périmètre", `ATT&CK v${ref.version} – couleur = sévérité la plus haute`,
-    el("div", { class: "section-body", style: "display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;padding-bottom:0" },
-      el("div", { class: "legend" }, SEV_ORDER.slice(0, 4).map((k) => el("span", {}, el("i", { class: "swatch", style: `--c:var(--sev-${k})` }), SEV[k]))),
-      exportBtn),
-    el("div", { class: "matrix" }, columns));
+
+  // --- tableau complet des techniques (n'en omet aucune, même hors référentiel)
+  const sortSel = el("select", { "aria-label": "Trier" }, el("option", { value: "severity" }, "Trier par sévérité"),
+    el("option", { value: "count" }, "Trier par nombre de constats"), el("option", { value: "id" }, "Trier par identifiant"));
+  sortSel.value = mitreState.sort;
+  const search = el("input", { type: "search", placeholder: "Filtrer (technique, tactique, règle)", "aria-label": "Filtrer les techniques" });
+  const body = el("tbody");
+  const render = () => {
+    const q = search.value.toLowerCase();
+    const rows = techIds.map((t) => ({ t, fs: byTech[t], sev: worst(byTech[t]), tactics: tacticsOf(t) }))
+      .filter((r) => !q || `${r.t} ${name(r.t)} ${r.tactics.join(" ")} ${r.fs.map((f) => f.rule_id).join(" ")}`.toLowerCase().includes(q))
+      .sort((a, b) => mitreState.sort === "id" ? a.t.localeCompare(b.t)
+        : mitreState.sort === "count" ? b.fs.length - a.fs.length || a.t.localeCompare(b.t)
+          : SEV_ORDER.indexOf(a.sev) - SEV_ORDER.indexOf(b.sev) || b.fs.length - a.fs.length);
+    body.replaceChildren(...rows.map((r) => el("tr", { class: "clickable", tabindex: "0", onclick: () => openTech(r.t), onkeydown: (e) => { if (e.key === "Enter") openTech(r.t); } },
+      el("td", {}, sev(r.sev)),
+      el("td", {}, el("a", { href: `https://attack.mitre.org/techniques/${r.t.replace(".", "/")}/`, target: "_blank", rel: "noopener", onclick: (e) => e.stopPropagation() }, r.t)),
+      el("td", {}, name(r.t)),
+      el("td", { class: "hide-sm small" }, r.tactics.join(", ") || "—"),
+      el("td", { class: "num" }, r.fs.length),
+      el("td", { class: "hide-sm small rule-id" }, r.fs.map((f) => f.rule_id).join(", ")))));
+  };
+  sortSel.addEventListener("change", () => { mitreState.sort = sortSel.value; render(); });
+  search.addEventListener("input", render);
+  render();
+  const table = el("section", { class: "section" },
+    el("div", { class: "section-head" }, el("div", {}, el("h2", {}, "Toutes les techniques"),
+      el("p", {}, `${plural(techIds.length, "technique", "techniques")} reliées à ${plural(s.findings.length, "constat", "constats")}`)), ref ? null : exportBtn),
+    el("div", { class: "toolbar" }, search, sortSel),
+    el("div", { class: "table-wrap" }, el("table", { class: "data" },
+      el("thead", {}, el("tr", {}, el("th", {}, "Sévérité max."), el("th", {}, "Technique"), el("th", {}, "Nom"),
+        el("th", { class: "hide-sm" }, "Tactiques"), el("th", { class: "num" }, "Constats"), el("th", { class: "hide-sm" }, "Règles"))),
+      body)));
+  return [matrix, table].filter(Boolean);
 }
 
 async function viewReport() {
@@ -1069,6 +1177,7 @@ async function busy(btn, label, fn) {
   try { return await fn(); } finally { btn.disabled = false; btn.textContent = old; }
 }
 function openPanel(kicker, title, body) {
+  pushDrawer();
   $("drawer-id").textContent = kicker;
   $("drawer-title").textContent = title;
   $("drawer-body").replaceChildren(body);
@@ -1529,6 +1638,7 @@ async function startApp(user, { first = false } = {}) {
   if (first) location.hash = "#/targets";
   else if (user.role === "admin" && !state.scans.length && !location.hash) location.hash = "#/targets";
   route();
+  if (inFrame()) return; // le cadre ne double pas les notifications de la page principale
   pollJobs();
   watchScans();
 }
@@ -1560,6 +1670,11 @@ const TOPO_FLAGS = {
 const topoState = { tab: "paths", families: new Set(Object.keys(TOPO_FAMILIES)), onlyPaths: false, simFrom: "" };
 
 async function viewTopology(params) {
+  const frame = params?.get("frame") === "1";
+  if (frame) {
+    document.body.classList.add("frame-mode");
+    if (params.get("scan") && params.get("scan") !== state.scanId) await loadScan(params.get("scan"));
+  }
   const s = state.scan;
   if (!s) return noScan();
   let t;
@@ -1570,14 +1685,14 @@ async function viewTopology(params) {
     .map(([k, l]) => el("button", { type: "button", role: "tab", class: topoState.tab === k ? "active" : null, "aria-selected": String(topoState.tab === k),
       onclick: () => { topoState.tab = k; softRender(); } }, l)));
   return [el("div", { class: "topo-head" }, tabs, el("span", { class: "muted small" }, `Rapport ${s.domain} du ${fmtDate(s.collected_at)}`)),
-    topoState.tab === "trusts" ? trustView(t.trust_map) : pathsView(t.graph, s)].flat(Infinity);
+    topoState.tab === "trusts" ? trustView(t.trust_map) : pathsView(t.graph, s, frame)].flat(Infinity).filter(Boolean);
 }
 
 // --- graphe des chemins ----------------------------------------------------------
-function pathsView(g, scan) {
+function pathsView(g, scan, frame = false) {
   const st = g.stats;
   const kpi = (label, value, cls, hint) => el("div", { class: `topo-kpi ${cls || ""}` }, el("span", { class: "k" }, label, help(hint)), el("strong", {}, value));
-  const band = el("section", { class: "section topo-kpis" },
+  const band = frame ? null : el("section", { class: "section topo-kpis" },
     kpi("Comptes et groupes Tier 0", st.tier0, "", "Administrateurs du domaine, contrôleurs de domaine et objets qui en contrôlent la sécurité."),
     kpi("Objets pouvant atteindre le Tier 0", st.exposed, st.exposed ? "warn" : "ok", "Comptes, groupes et ordinateurs non administrateurs qui ont un chemin (appartenance, droit, délégation) jusqu'au Tier 0."),
     kpi("Chemins ouverts à tous les utilisateurs", st.low_priv_paths, st.low_priv_paths ? "bad" : "ok", "Chemins qui partent de « Tout le monde », « Utilisateurs authentifiés » ou « Utilisateurs du domaine » : n'importe quel compte peut devenir administrateur."),
@@ -1585,32 +1700,63 @@ function pathsView(g, scan) {
   if (!g.nodes.length) return [band, el("section", { class: "section" }, emptyState("Aucune relation à afficher", "Aucun groupe Tier 0 ni compte à risque n'a été trouvé dans les données collectées."))];
 
   const byId = new Map(g.nodes.map((n) => [n.id, n]));
+  // --- membres repliables : un membre dont la seule relation est « membre de » des groupes repliés est masqué
+  const leafOf = new Map(); // groupe -> membres « feuilles »
+  for (const n of g.nodes) {
+    const rel = g.edges.filter((e) => e.source === n.id || e.target === n.id);
+    if (!rel.length || !rel.every((e) => e.source === n.id && e.kind === "MemberOf")) continue;
+    if (n.low_priv) continue;
+    for (const e of rel) {
+      if (!leafOf.has(e.target)) leafOf.set(e.target, []);
+      leafOf.get(e.target).push(n.id);
+    }
+  }
+  const collapsible = [...leafOf.entries()].filter(([, m]) => m.length >= 2).map(([gid]) => gid);
+  if (!topoState.collapsed || topoState.collapsedFor !== state.scanId) {
+    topoState.collapsed = new Set(collapsible); // par défaut : membres repliés dans leurs groupes
+    topoState.collapsedFor = state.scanId;
+  }
+
   const famBoxes = el("div", { class: "topo-filters" }, Object.entries(TOPO_FAMILIES).map(([k, l]) => {
     const box = el("input", { type: "checkbox", checked: topoState.families.has(k) });
-    box.addEventListener("change", () => { box.checked ? topoState.families.add(k) : topoState.families.delete(k); draw(); });
+    box.addEventListener("change", () => { box.checked ? topoState.families.add(k) : topoState.families.delete(k); draw(true); });
     return el("label", { class: `chip fam-${k}` }, box, el("i"), l);
   }));
   const only = el("input", { type: "checkbox", checked: topoState.onlyPaths });
-  only.addEventListener("change", () => { topoState.onlyPaths = only.checked; draw(); });
+  only.addEventListener("change", () => { topoState.onlyPaths = only.checked; draw(true); });
   const search = el("input", { type: "search", placeholder: "Trouver un compte ou un groupe", "aria-label": "Rechercher dans le graphe", list: "topo-names" });
   const names = el("datalist", { id: "topo-names" }, g.nodes.map((n) => el("option", { value: n.label })));
   search.addEventListener("change", () => {
     const n = g.nodes.find((x) => x.label.toLowerCase() === search.value.trim().toLowerCase());
-    if (n) { focusNode(n.id); openNode(n); } else if (search.value) toast("Aucun objet de ce nom dans le graphe");
+    if (!n) { if (search.value) toast("Aucun objet de ce nom dans le graphe"); return; }
+    revealNode(n.id); focusNode(n.id); openNode(n);
   });
-  const resetBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Recentrer");
+  const btn = (label, title, fn) => { const b = el("button", { class: "btn btn-secondary", type: "button", title }, label); b.addEventListener("click", fn); return b; };
+  const main = el("section", { class: `section topo-main${frame ? " framed" : ""}` });
+  const expandBtn = btn(frame ? "Fermer" : "Agrandir", frame ? "Fermer la fenêtre" : "Afficher le graphe sur tout l'écran", () => {
+    if (frame) { if (window.parent !== window && window.parent.closeFrame) window.parent.closeFrame(); else window.close(); return; }
+    main.classList.toggle("expanded");
+    expandBtn.textContent = main.classList.contains("expanded") ? "Réduire" : "Agrandir";
+    draw(true);
+  });
   const toolbar = el("div", { class: "toolbar topo-toolbar" }, famBoxes,
-    el("label", { class: "check inline" }, only, el("span", {}, "Seulement les chemins vers le Tier 0")), search, names, resetBtn);
+    el("label", { class: "check inline" }, only, el("span", {}, "Seulement les chemins vers le Tier 0")), search, names,
+    collapsible.length ? btn("Tout replier", "Regrouper les membres dans leurs groupes", () => { topoState.collapsed = new Set(collapsible); draw(true); }) : null,
+    collapsible.length ? btn("Tout déplier", "Afficher tous les membres", () => { topoState.collapsed = new Set(); draw(true); }) : null,
+    btn("Recentrer", "Revenir à la vue d'ensemble", () => draw(true)), expandBtn,
+    frame ? null : btn("Ouvrir dans un cadre", "Afficher le graphe dans un cadre par-dessus la page (Échap pour fermer)", () =>
+      openFrame(`#/topology?scan=${encodeURIComponent(state.scanId)}`, `Topologie — ${scan.domain}`)));
 
   const svgEl = svg("svg", { class: "topo-svg", role: "img", "aria-label": "Graphe des relations vers le Tier 0" });
-  const wrap = el("div", { class: "topo-canvas" }, svgEl,
+  const canvas = el("div", { class: "topo-canvas" }, svgEl,
     el("div", { class: "topo-legend" },
       el("span", {}, el("i", { class: "lg tier0" }), "Tier 0"), el("span", {}, el("i", { class: "lg exposed" }), "Peut atteindre le Tier 0"),
       el("span", {}, el("i", { class: "lg lowpriv" }), "Tous les utilisateurs"), el("span", {}, el("i", { class: "lg risky" }), "Compte à risque"),
+      el("span", {}, el("b", { class: "lg-badge" }, "+3"), "membres repliés (clic pour déplier)"),
       el("span", { class: "muted" }, "Molette : zoom · glisser : déplacer · clic : détails")));
+  main.append(toolbar, canvas);
 
-  // Liste des chemins
-  const pathList = el("ol", { class: "topo-paths" }, g.paths.map((p, i) => {
+  const pathList = el("ol", { class: "topo-paths" }, g.paths.map((p) => {
     const start = byId.get(p.nodes[0]);
     return el("li", { tabindex: "0", class: start?.low_priv ? "lowpriv" : null,
       onclick: () => highlightPath(p), onkeydown: (e) => { if (e.key === "Enter") highlightPath(p); } },
@@ -1618,78 +1764,154 @@ function pathsView(g, scan) {
     el("div", { class: "path-steps small" }, p.kinds.map((k, j) => [el("span", { class: "step-kind" }, g.edge_labels[k] || k), " ", byId.get(p.nodes[j + 1])?.label, j < p.kinds.length - 1 ? " · " : ""])),
     start?.low_priv ? el("span", { class: "pill lvl-critical" }, "Ouvert à tous") : null);
   }));
-  const side = el("section", { class: "section topo-side" },
+  const side = frame ? null : el("section", { class: "section topo-side" },
     el("div", { class: "section-head" }, el("div", {}, el("h2", {}, "Chemins vers le Tier 0"), el("p", {}, "Les plus courts ; cliquez pour les surligner"))),
     g.paths.length ? pathList : el("p", { class: "muted section-body" }, "Aucun chemin d'un compte non administrateur vers le Tier 0."),
     g.truncated ? el("p", { class: "note small section-body" }, "Graphe limité aux 400 objets les plus proches du Tier 0.") : null);
 
-  // --- disposition en colonnes : distance au Tier 0 (0 à droite) ; comptes isolés à gauche
-  const COLW = 230, ROWH = 38, PAD = 60;
-  let layout = new Map(), viewBox = null, highlighted = null;
+  // --- disposition : colonnes par distance au Tier 0 (Tier 0 à droite), ordre limitant les croisements
+  const COLW = 270, ROWH = 46, PAD = 70, R = 15;
+  let layout = new Map(), viewBox = null, highlighted = null, hidden = new Set(), shown = [];
+  const ICON = { user: "i-user", group: "i-users", computer: "i-computer", domain: "i-domain", object: "i-audit" };
   function visible() {
-    const keepNodes = new Set(g.nodes.filter((n) => !topoState.onlyPaths || n.distance !== null).map((n) => n.id));
-    const es = g.edges.filter((e) => topoState.families.has(e.family) && keepNodes.has(e.source) && keepNodes.has(e.target));
-    return { nodes: g.nodes.filter((n) => keepNodes.has(n.id)), edges: es };
+    hidden = new Set();
+    for (const gid of topoState.collapsed) for (const m of leafOf.get(gid) || []) hidden.add(m);
+    // un membre replié qui appartient aussi à un groupe déplié reste visible
+    for (const [gid, members] of leafOf) if (!topoState.collapsed.has(gid)) for (const m of members) hidden.delete(m);
+    const keep = new Set(g.nodes.filter((n) => !hidden.has(n.id) && (!topoState.onlyPaths || n.distance !== null)).map((n) => n.id));
+    const edges = g.edges.filter((e) => topoState.families.has(e.family) && keep.has(e.source) && keep.has(e.target));
+    return { nodes: g.nodes.filter((n) => keep.has(n.id)), edges };
   }
-  function computeLayout(nodes) {
+  function computeLayout(nodes, edges) {
     const maxD = Math.max(0, ...nodes.map((n) => n.distance ?? 0));
+    const colOf = (n) => (n.distance === null ? maxD + 1 : n.distance);
     const cols = new Map();
-    for (const n of nodes) {
-      const col = n.distance === null ? maxD + 1 : n.distance;
-      if (!cols.has(col)) cols.set(col, []);
-      cols.get(col).push(n);
-    }
+    for (const n of nodes) { const c = colOf(n); if (!cols.has(c)) cols.set(c, []); cols.get(c).push(n); }
     const order = { domain: 0, object: 1, group: 2, user: 3, computer: 4 };
+    const idx = new Map();
+    const setIdx = (list) => list.forEach((n, i) => idx.set(n.id, i));
+    const base = (a, b) => (b.low_priv - a.low_priv) || (order[a.type] - order[b.type]) || a.label.localeCompare(b.label);
+    for (const list of cols.values()) { list.sort(base); setIdx(list); }
+    const outs = new Map(), ins = new Map();
+    for (const e of edges) {
+      (outs.get(e.source) || outs.set(e.source, []).get(e.source)).push(e.target);
+      (ins.get(e.target) || ins.set(e.target, []).get(e.target)).push(e.source);
+    }
+    const bary = (n, nb) => { const xs = (nb.get(n.id) || []).filter((x) => idx.has(x)).map((x) => idx.get(x)); return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null; };
+    const sweep = (list, nb) => { list.sort((a, b) => { const x = bary(a, nb), y = bary(b, nb); return (x ?? 1e9) - (y ?? 1e9) || base(a, b); }); setIdx(list); };
+    for (let pass = 0; pass < 2; pass++) {
+      for (let c = 1; c <= maxD + 1; c++) if (cols.has(c)) sweep(cols.get(c), outs); // vers le Tier 0
+      for (let c = maxD; c >= 0; c--) if (cols.has(c) && pass === 0) sweep(cols.get(c), ins); // depuis la gauche
+    }
     layout = new Map();
     let height = 0;
-    for (const [col, list] of cols) {
-      list.sort((a, b) => (b.low_priv - a.low_priv) || (order[a.type] - order[b.type]) || a.label.localeCompare(b.label));
-      list.forEach((n, i) => layout.set(n.id, { x: PAD + (maxD + 1 - col) * COLW, y: PAD + i * ROWH }));
-      height = Math.max(height, PAD * 2 + list.length * ROWH);
+    for (const [c, list] of cols) {
+      list.forEach((n, i) => layout.set(n.id, { x: PAD + (maxD + 1 - c) * COLW, y: PAD + 20 + i * ROWH,
+        lw: Math.min(28, n.label.length) * 7.4 + 14 }));
+      height = Math.max(height, PAD * 2 + 20 + list.length * ROWH);
     }
     return { width: PAD * 2 + (maxD + 2) * COLW, height, maxD, hasIsolated: cols.has(maxD + 1) };
   }
   function shape(n) {
+    const risky = n.flags.some((f) => ["spn", "asrep", "unconstrained", "sid_history"].includes(f));
     const cls = ["node", `t-${n.type}`, n.tier0 || n.privileged ? "tier0" : "", n.exposed ? "exposed" : "", n.low_priv ? "lowpriv" : "",
-      n.flags.some((f) => ["spn", "asrep", "unconstrained", "sid_history"].includes(f)) ? "risky" : "", n.flags.includes("disabled") ? "disabled" : ""].join(" ");
+      risky ? "risky" : "", n.flags.includes("disabled") ? "disabled" : ""].join(" ");
     const p = layout.get(n.id);
-    const glyph = n.type === "group" ? svg("rect", { x: -11, y: -11, width: 22, height: 22, rx: 5 })
-      : n.type === "computer" ? svg("rect", { x: -12, y: -8, width: 24, height: 16, rx: 2 })
-        : n.type === "domain" || n.type === "object" ? svg("path", { d: "M0,-13 L13,0 L0,13 L-13,0 Z" }) : svg("circle", { r: 11 });
-    const letter = { user: "U", group: "G", computer: "C", domain: "D", object: "O" }[n.type];
+    const folded = topoState.collapsed.has(n.id) ? (leafOf.get(n.id) || []).filter((m) => hidden.has(m)).length : 0;
+    const label = n.label.length > 28 ? `${n.label.slice(0, 27)}…` : n.label;
     const g1 = svg("g", { class: cls, transform: `translate(${p.x},${p.y})`, tabindex: "0", "data-id": n.id },
-      glyph, svg("text", { class: "glyph", "text-anchor": "middle", y: 4 }, letter),
-      svg("text", { class: "label", x: 18, y: 4 }, n.label.length > 26 ? `${n.label.slice(0, 25)}…` : n.label),
-      n.flags.filter((f) => TOPO_FLAGS[f] && !["dc", "disabled"].includes(f)).length ? svg("circle", { class: "flag-dot", cx: 9, cy: -9, r: 4 }) : null);
+      svg("circle", { class: "disc", r: R }),
+      svg("use", { href: `#${ICON[n.type]}`, x: -9, y: -9, width: 18, height: 18, class: "icon" }),
+      svg("text", { class: "label", x: R + 7, y: 5 }, label),
+      risky ? svg("circle", { class: "flag-dot", cx: R - 3, cy: -R + 3, r: 5 }) : null,
+      folded ? svg("g", { class: "badge", transform: `translate(${R + 7 + label.length * 7.4 + 24},0)` },
+        svg("rect", { x: -18, y: -10, width: 36, height: 20, rx: 10 }), svg("text", { "text-anchor": "middle", y: 4 }, `+${folded}`)) : null,
+      svg("title", {}, `${TOPO_TYPES[n.type]} ${n.label}${folded ? ` — ${folded} membre(s) replié(s), clic sur le badge pour déplier` : ""}`));
+    g1.querySelector(".badge")?.addEventListener("click", (e) => { e.stopPropagation(); topoState.collapsed.delete(n.id); draw(false); });
     g1.addEventListener("mouseenter", () => { if (!highlighted) hover(n.id); });
     g1.addEventListener("mouseleave", () => { if (!highlighted) hover(null); });
     g1.addEventListener("click", (e) => { e.stopPropagation(); openNode(n); });
     g1.addEventListener("keydown", (e) => { if (e.key === "Enter") openNode(n); });
     return g1;
   }
-  function edgePath(e) {
-    const a = layout.get(e.source), b = layout.get(e.target);
-    const x1 = a.x + 14, x2 = b.x - 16;
-    const mx = (x1 + x2) / 2;
-    const same = Math.abs(a.x - b.x) < 1;
-    const d = same ? `M${a.x},${a.y + 12} C${a.x + 70},${a.y + 12} ${b.x + 70},${b.y - 12} ${b.x},${b.y - 12}` : `M${x1},${a.y} C${mx},${a.y} ${mx},${b.y} ${x2},${b.y}`;
-    const p = svg("path", { class: `edge fam-${e.family}${e.to_tier0 ? " main" : ""}`, d, "marker-end": `url(#arrow-${e.family})`, "data-s": e.source, "data-t": e.target });
-    p.append(svg("title", {}, `${byId.get(e.source)?.label} — ${g.edge_labels[e.kind] || e.kind} → ${byId.get(e.target)?.label}`));
-    return p;
+  function edgePaths(edges) {
+    // ports : les arêtes d'un même nœud arrivent (ou partent) à des hauteurs décalées, triées par position
+    const port = (list, key, other) => {
+      const by = new Map();
+      for (const e of list) { const k = e[key]; if (!by.has(k)) by.set(k, []); by.get(k).push(e); }
+      const off = new Map();
+      for (const arr of by.values()) {
+        arr.sort((a, b) => layout.get(a[other]).y - layout.get(b[other]).y);
+        const span = Math.min(2 * R - 6, (arr.length - 1) * 5);
+        arr.forEach((e, i) => off.set(e, arr.length > 1 ? -span / 2 + (span * i) / (arr.length - 1) : 0));
+      }
+      return off;
+    };
+    // faisceaux : à partir de 4 membres, les appartenances rejoignent un point avant le groupe, puis un seul trait
+    const BUNDLE = 4;
+    const members = new Map();
+    for (const e of edges) if (e.kind === "MemberOf") (members.get(e.target) || members.set(e.target, []).get(e.target)).push(e);
+    const bundled = new Set();
+    const trunks = [];
+    for (const [target, list] of members) {
+      if (list.length < BUNDLE) continue;
+      const b = layout.get(target);
+      const jx = b.x - R - 70, jy = b.y;
+      for (const e of list) bundled.add(e);
+      const t = svg("path", { class: "edge fam-membership trunk", d: `M${jx},${jy} L${b.x - R - 2},${jy}`, "marker-end": "url(#arrow-membership)", "data-s": "", "data-t": target });
+      t.append(svg("title", {}, `${list.length} membres → ${byId.get(target)?.label}`));
+      trunks.push(t, svg("circle", { class: "junction", cx: jx, cy: jy, r: 4 }),
+        svg("text", { class: "trunk-label", x: jx + 8, y: jy - 6 }, `${list.length} membres`));
+      list.forEach((e) => { e._junction = { x: jx, y: jy }; });
+    }
+    const inOff = port(edges.filter((e) => !bundled.has(e)), "target", "source"), outOff = port(edges, "source", "target");
+    return [...edges.map((e) => {
+      if (bundled.has(e)) {
+        const a = layout.get(e.source), j = e._junction;
+        const y1 = a.y + outOff.get(e);
+        const x1 = Math.abs(a.x - (j.x + 70 + R)) < 1 ? a.x - R : a.x + R + a.lw; // membre dans la même colonne que le groupe
+        const mx = (x1 + j.x) / 2;
+        const p = svg("path", { class: `edge fam-membership bundled`, d: `M${x1},${y1} C${mx},${y1} ${mx},${j.y} ${j.x},${j.y}`, "data-s": e.source, "data-t": e.target });
+        p.append(svg("title", {}, `${byId.get(e.source)?.label} — membre de → ${byId.get(e.target)?.label}`));
+        return p;
+      }
+      const a = layout.get(e.source), b = layout.get(e.target);
+      const y1 = a.y + outOff.get(e), y2 = b.y + inOff.get(e);
+      let d;
+      if (Math.abs(a.x - b.x) < 1) { // même colonne : arc sur la gauche
+        const bend = a.x - 60 - Math.min(80, Math.abs(a.y - b.y) / 4);
+        d = `M${a.x - R},${y1} C${bend},${y1} ${bend},${y2} ${b.x - R - 2},${y2}`;
+      } else {
+        const x1 = Math.min(a.x + R + a.lw, b.x - R - 40), x2 = b.x - R - 2, mx = (x1 + x2) / 2;
+        d = `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`;
+      }
+      const p = svg("path", { class: `edge fam-${e.family}${e.to_tier0 ? " main" : ""}`, d, "marker-end": `url(#arrow-${e.family})`, "data-s": e.source, "data-t": e.target });
+      p.append(svg("title", {}, `${byId.get(e.source)?.label} — ${g.edge_labels[e.kind] || e.kind} → ${byId.get(e.target)?.label}`));
+      return p;
+    }), ...trunks];
   }
-  function draw() {
+  function draw(resetView) {
     const { nodes, edges } = visible();
-    const dims = computeLayout(nodes);
+    shown = nodes;
+    const dims = computeLayout(nodes, edges);
     const defs = svg("defs", {}, Object.keys(TOPO_FAMILIES).map((f) => svg("marker", { id: `arrow-${f}`, viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 9, markerHeight: 9, markerUnits: "userSpaceOnUse", orient: "auto-start-reverse" },
       svg("path", { class: `arrowhead fam-${f}`, d: "M0,0 L10,5 L0,10 z" }))));
     const headers = svg("g", { class: "col-heads" }, Array.from({ length: dims.maxD + 2 }, (_, i) => {
       const col = dims.maxD + 1 - i;
       if (col === dims.maxD + 1 && !dims.hasIsolated) return null;
       const label = col === 0 ? "Tier 0" : col === dims.maxD + 1 ? "Comptes à risque (sans chemin)" : `À ${col} étape${col > 1 ? "s" : ""} du Tier 0`;
-      return svg("text", { x: PAD + i * COLW - 12, y: 24 }, label);
+      return svg("text", { x: PAD + i * COLW - R, y: 34 }, label);
     }));
-    svgEl.replaceChildren(defs, headers, svg("g", { class: "edges" }, edges.map(edgePath)), svg("g", { class: "nodes" }, nodes.map(shape)));
-    viewBox = { x: 0, y: 0, w: dims.width, h: Math.max(dims.height, 420) };
+    svgEl.replaceChildren(defs, headers, svg("g", { class: "edges" }, edgePaths(edges)), svg("g", { class: "nodes" }, nodes.map(shape)));
+    const full = { x: 0, y: 0, w: dims.width, h: Math.max(dims.height, 420) };
+    // vue initiale lisible : on ne dézoome pas au point de rendre les noms illisibles
+    const box = svgEl.getBoundingClientRect();
+    const minScale = 0.75; // pixels écran par unité au minimum
+    if (resetView || !viewBox) {
+      viewBox = { ...full };
+      if (box.width && box.width / full.w < minScale) { viewBox.w = box.width / minScale; viewBox.x = full.w - viewBox.w; }
+      if (box.height && box.height / viewBox.h < minScale * 0.9) viewBox.h = box.height / (minScale * 0.9);
+    }
     applyView();
     highlighted = null;
   }
@@ -1706,7 +1928,13 @@ function pathsView(g, scan) {
       }
     });
   }
+  function revealNode(id) {
+    let changed = false;
+    for (const [gid, members] of leafOf) if (members.includes(id) && topoState.collapsed.has(gid)) { topoState.collapsed.delete(gid); changed = true; }
+    if (changed) draw(false);
+  }
   function highlightPath(p) {
+    p.nodes.forEach((id) => { if (hidden.has(id)) revealNode(id); });
     pathList.querySelectorAll("li").forEach((li, i) => li.classList.toggle("active", g.paths[i] === p));
     highlighted = p;
     svgEl.classList.add("dimmed");
@@ -1718,15 +1946,15 @@ function pathsView(g, scan) {
     const pts = p.nodes.map((id) => layout.get(id)).filter(Boolean);
     if (pts.length) {
       const xs = pts.map((q) => q.x), ys = pts.map((q) => q.y);
-      const w = Math.max(...xs) - Math.min(...xs) + 400, h = Math.max(...ys) - Math.min(...ys) + 200;
-      viewBox = { x: Math.min(...xs) - 150, y: Math.min(...ys) - 100, w: Math.max(w, 600), h: Math.max(h, 320) };
+      const w = Math.max(Math.max(...xs) - Math.min(...xs) + 480, 700), h = Math.max(Math.max(...ys) - Math.min(...ys) + 240, 380);
+      viewBox = { x: Math.min(...xs) - 160, y: Math.min(...ys) - 120, w, h };
       applyView();
     }
   }
   function focusNode(id) {
     const p = layout.get(id);
     if (!p) return;
-    viewBox = { x: p.x - 400, y: p.y - 220, w: 900, h: 480 };
+    viewBox = { x: p.x - 420, y: p.y - 240, w: 960, h: 520 };
     applyView();
     highlighted = null;
     hover(id);
@@ -1742,23 +1970,31 @@ function pathsView(g, scan) {
       cur = e.target;
     }
     const related = (scan.findings || []).filter((f) => f.affected.some((a) => a.toLowerCase() === n.label.toLowerCase() || a.toLowerCase().startsWith(`${n.label.toLowerCase()} `)));
-    const rel = (list, dir) => el("ul", { class: "plain small" }, list.slice(0, 40).map((e) => {
+    const rel = (list, dir) => el("ul", { class: "plain small" }, list.slice(0, 60).map((e) => {
       const other = byId.get(dir === "out" ? e.target : e.source);
       return el("li", {}, el("span", { class: `step-kind fam-${e.family}` }, g.edge_labels[e.kind] || e.kind), " ",
-        el("a", { href: "#", onclick: (ev) => { ev.preventDefault(); focusNode(other.id); openNode(other); } }, other?.label || "?"));
+        el("a", { href: "#", onclick: (ev) => { ev.preventDefault(); revealNode(other.id); focusNode(other.id); openNode(other); } }, other?.label || "?"));
     }));
+    const members = leafOf.get(n.id) || [];
+    const toggle = members.length ? el("button", { class: "btn btn-secondary", type: "button" },
+      topoState.collapsed.has(n.id) ? `Afficher les ${members.length} membres dans le graphe` : "Replier les membres") : null;
+    toggle?.addEventListener("click", () => {
+      topoState.collapsed.has(n.id) ? topoState.collapsed.delete(n.id) : topoState.collapsed.add(n.id);
+      closeDrawer(); draw(false);
+    });
     openPanel(`${TOPO_TYPES[n.type]}${n.tier0 || n.privileged ? " · Tier 0" : ""}`, n.label, el("div", {},
       el("div", { class: "kv" },
         n.tier0 || n.privileged ? el("span", { class: "pill lvl-critical" }, "Tier 0") : n.exposed ? el("span", { class: "pill lvl-high" }, `À ${n.distance} étape${n.distance > 1 ? "s" : ""} du Tier 0`) : el("span", { class: "pill lvl-low" }, "Pas de chemin vers le Tier 0"),
         n.low_priv ? el("span", { class: "pill lvl-critical" }, "Inclut tous les utilisateurs") : null,
         n.members !== undefined ? el("span", {}, `${n.members} membre(s) direct(s)`) : null),
+      toggle ? el("div", { class: "actions" }, toggle) : null,
       n.flags.filter((f) => TOPO_FLAGS[f]).length ? [el("h3", {}, "Points d'attention"), el("ul", { class: "plain" }, n.flags.filter((f) => TOPO_FLAGS[f]).map((f) => el("li", {}, el("strong", {}, TOPO_FLAGS[f][0]), " : ", TOPO_FLAGS[f][1])))] : null,
       chain.length ? [el("h3", {}, "Chemin le plus court vers le Tier 0"), el("ol", { class: "plain small chain" }, chain.map((e) => el("li", {}, byId.get(e.source)?.label, " — ", el("span", { class: `step-kind fam-${e.family}` }, g.edge_labels[e.kind] || e.kind), " → ", el("strong", {}, byId.get(e.target)?.label))))] : null,
       out.length ? [el("h3", {}, `Peut agir sur (${out.length})`), rel(out, "out")] : null,
-      inc.length ? [el("h3", {}, `Contrôlé par (${inc.length})`), rel(inc, "in")] : null,
+      inc.length ? [el("h3", {}, `Contrôlé par ou membres (${inc.length})`), rel(inc, "in")] : null,
       related.length ? [el("h3", {}, "Constats concernant cet objet"), el("ul", { class: "plain" }, related.map((f) => el("li", {}, sev(f.severity), " ", el("a", { href: "#", onclick: (ev) => { ev.preventDefault(); openFinding(f); } }, f.title))))] : null));
   }
-  // zoom et déplacement
+  // zoom (molette) et déplacement (glisser)
   svgEl.addEventListener("wheel", (e) => {
     e.preventDefault();
     const r = svgEl.getBoundingClientRect();
@@ -1781,9 +2017,12 @@ function pathsView(g, scan) {
     highlighted = null; hover(null);
     pathList.querySelectorAll("li.active").forEach((li) => li.classList.remove("active"));
   });
-  resetBtn.addEventListener("click", draw);
-  draw();
-  return [band, el("div", { class: "topo-layout" }, el("section", { class: "section topo-main" }, toolbar, wrap), side)];
+  document.addEventListener("keydown", function onEsc(e) {
+    if (!main.isConnected) { document.removeEventListener("keydown", onEsc); return; }
+    if (e.key === "Escape" && main.classList.contains("expanded") && !$("drawer").classList.contains("open")) expandBtn.click();
+  });
+  requestAnimationFrame(() => draw(true)); // après insertion dans la page : la taille réelle est connue
+  return [band, frame ? main : el("div", { class: "topo-layout" }, main, side)];
 }
 
 // --- approbations ------------------------------------------------------------------
@@ -2110,6 +2349,7 @@ async function softRender() {
 async function route() {
   if (!state.user) return;
   const seq = ++routeSeq;
+  document.body.classList.toggle("frame-mode", inFrame());
   const [, query] = (location.hash.slice(2) || "dashboard").split("?");
   const name = currentView();
   const meta = VIEWS[name];
@@ -2141,7 +2381,16 @@ function closeSidebar() { $("sidebar").classList.remove("open"); $("scrim").clas
 $("menu-btn").addEventListener("click", openSidebar);
 $("scrim").addEventListener("click", closeSidebar);
 $("drawer-close").addEventListener("click", closeDrawer);
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeDrawer(); closeSidebar(); } });
+$("drawer-back").addEventListener("click", drawerBack);
+$("frame-close").addEventListener("click", closeFrame);
+$("frame-modal").addEventListener("click", (e) => { if (e.target.id === "frame-modal") closeFrame(); });
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if ($("drawer").classList.contains("open")) { closeDrawer(); return; }
+  if (!$("frame-modal").hidden) { closeFrame(); return; }
+  if (inFrame() && window.parent !== window && window.parent.closeFrame) { window.parent.closeFrame(); return; }
+  closeSidebar();
+});
 $("scan-select").addEventListener("change", async (e) => { await loadScan(e.target.value); route(); });
 $("domain-select").addEventListener("change", (e) => { state.domain = e.target.value; route(); });
 $("logout-btn").addEventListener("click", logout);

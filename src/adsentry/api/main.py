@@ -733,7 +733,8 @@ def list_scans(_: Viewer):
                 "ai": (DATA_DIR / f"{p.stem}.ai.json").exists(),
             }
         )
-    return sorted(out, key=lambda x: x["collected_at"], reverse=True)
+    # à date de collecte égale, le rapport analysé le plus récemment d'abord
+    return sorted(out, key=lambda x: (x["collected_at"], x["analyzed_at"]), reverse=True)
 
 
 @app.get("/api/scans/{scan_id}")

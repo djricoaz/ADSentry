@@ -31,6 +31,9 @@
   <symbol id="i-help" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><path d="M6.2 6.2a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.4"/><path d="M8 11.6v.1"/></symbol>
   <symbol id="i-topology" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="2"/><circle cx="12.5" cy="3.5" r="2"/><circle cx="12.5" cy="12.5" r="2"/><path d="M5.3 7.1l5.4-2.7M5.3 8.9l5.4 2.7"/></symbol>
   <symbol id="i-ai" viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5"/><path d="M6 1.5v2M10 1.5v2M6 12.5v2M10 12.5v2M1.5 6h2M1.5 10h2M12.5 6h2M12.5 10h2"/><path d="M6.3 9.8L8 6l1.7 3.8M6.9 8.6h2.2"/></symbol>
+  <symbol id="i-user" viewBox="0 0 16 16"><circle cx="8" cy="5" r="3"/><path d="M2.5 14.5c0-3 2.5-5.2 5.5-5.2s5.5 2.2 5.5 5.2"/></symbol>
+  <symbol id="i-computer" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="8.5" rx="1"/><path d="M5.5 14h5M8 11v3"/></symbol>
+  <symbol id="i-domain" viewBox="0 0 16 16"><path d="M2 14.5h12M3 14.5V6l5-3.5L13 6v8.5"/><path d="M6 14.5v-4h4v4M6 7.5h4"/></symbol>
   <symbol id="i-download" viewBox="0 0 16 16"><path d="M8 2.5v8M5 7.5l3 3 3-3M2.5 10.5v3h11v-3"/></symbol>
 </svg>
 
@@ -113,6 +116,7 @@
 
 <aside class="drawer" id="drawer" aria-hidden="true" aria-labelledby="drawer-title">
   <header class="drawer-head">
+    <button class="btn btn-link drawer-back" id="drawer-back" type="button" hidden>← Retour</button>
     <div>
       <span class="drawer-id" id="drawer-id"></span>
       <h2 id="drawer-title"></h2>
@@ -122,6 +126,16 @@
   <div class="drawer-body" id="drawer-body"></div>
 </aside>
 
+<div class="frame-modal" id="frame-modal" hidden role="dialog" aria-modal="true" aria-labelledby="frame-title">
+  <div class="frame-box">
+    <header class="frame-head">
+      <h2 id="frame-title"></h2>
+      <a class="btn btn-link" id="frame-pop" target="_blank" rel="noopener">Ouvrir dans une fenêtre</a>
+      <button class="icon-btn" id="frame-close" aria-label="Fermer le cadre"><svg><use href="#i-close"/></svg></button>
+    </header>
+    <iframe id="frame-iframe" title="Contenu"></iframe>
+  </div>
+</div>
 <div class="tooltip" id="tooltip"></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="app.js"></script>
