@@ -18,7 +18,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-collect = ["ldap3>=2.9", "impacket>=0.12", "cryptography>=42"]
+# pycryptodome : repli MD4 de ldap3 pour NTLM quand OpenSSL 3 désactive MD4 (Debian 12+, Ubuntu 22.04+, RHEL 9)
+collect = ["ldap3>=2.9", "impacket>=0.12", "cryptography>=42", "pycryptodome>=3.20"]
 entra = ["msal>=1.28"]
 api = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "python-multipart>=0.0.9"]
 dev = ["pytest>=8", "ruff>=0.5"]
