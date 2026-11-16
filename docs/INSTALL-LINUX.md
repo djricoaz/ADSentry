@@ -48,6 +48,16 @@ Sans compte créé à l'étape 3, la console demande le jeton d'installation : `
 1. **Administration > Cibles d'audit > Ajouter une cible**, puis **Tester la connexion** et **Lancer le scan**.
 2. **Administration > Comptes et rôles** : comptes « Lecteur » pour consulter les évaluations.
 
+## IA locale (optionnel)
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+Puis dans la console : **Administration > IA locale > Installer le modèle**. Ollama doit écouter sur
+`http://localhost:11434` (valeur par défaut) ; sinon, ajoutez `Environment=OLLAMA_HOST=http://hôte:11434` au service.
+Prévoir 8 Go de RAM pour le modèle 4B sur CPU.
+
 ## Mise à jour
 
 ```bash

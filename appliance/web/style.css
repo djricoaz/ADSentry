@@ -561,3 +561,15 @@ ol.log .log-error { color: var(--sev-critical); }
 
 .more { padding-top: .4rem; padding-bottom: .6rem; text-align: center; }
 .prose td:first-child { white-space: nowrap; }
+
+/* ------------------------------------------------------------------ IA locale */
+.ai-status { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.ai-status-item { display: flex; flex-direction: column; gap: .3rem; padding: .9rem 1.1rem; border-left: 1px solid var(--rule); overflow-wrap: anywhere; }
+.ai-status-item:first-child { border-left: 0; }
+.ai-status-item .k { font-size: .8rem; color: var(--ink-2); }
+textarea { width: 100%; font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--rule-strong);
+  border-radius: var(--radius); padding: .5rem .6rem; resize: vertical; }
+textarea.mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: .85rem; line-height: 1.5; }
+.ai-answer { margin-top: 1rem; padding: .9rem 1rem; background: #f6f8fb; border: 1px solid var(--rule); border-radius: var(--radius); }
+.ai-text { white-space: pre-wrap; line-height: 1.6; }
+.prose .inline-fields { display: inline-flex; margin-top: .4rem; }

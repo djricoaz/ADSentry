@@ -69,6 +69,10 @@ Tout le reste se fait dans la console web `https://<nom de l'appliance>` :
 2. **Tester la connexion**, puis **Lancer le scan** : l'avancement s'affiche en direct (collecte LDAP, SYSVOL,
    sondes, Graph, analyse, IA) ; le rapport apparaît dans les vues dès la fin du scan.
 3. **Administration > Comptes et rôles** : créer les comptes des équipes.
+4. **Administration > IA locale** : installer le modèle (téléchargement par le conteneur `ollama`, avec
+   progression), ajouter vos procédures à la base de connaissances puis « Réindexer », tester l'analyste.
+   Les synthèses des scans utilisent alors ces documents. Réglages (modèle de base, base de connaissances)
+   et données dans `/var/lib/adsentry/ai.json`, `/var/lib/adsentry/knowledge/`, `/var/lib/adsentry/rag_index.npz`.
 
 ## Comptes et rôles de la console
 

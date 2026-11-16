@@ -533,6 +533,142 @@ def cancel_job(job_id: str, admin: Admin):
     return job_summary(job)
 
 
+# ----------------------------------------------------------------------------- IA locale (admin)
+
+
+class AiSettingsInput(BaseModel):
+    base_model: str = Field(max_length=160)
+    analyst_model: str = Field(max_length=160)
+    embed_model: str = Field(max_length=160)
+    use_rag: bool = True
+    rag_snippets: int = Field(8, ge=0, le=20)
+
+
+class KnowledgeInput(BaseModel):
+    content: str = Field(max_length=250_000)
+
+
+class Question(BaseModel):
+    question: str = Field(min_length=3, max_length=2000)
+
+
+@app.get("/api/ai/status")
+def ai_status(_: Admin):
+    from ..ai import admin as ai
+
+    data = ai.status()
+    active = [j for j in jobs.list(limit=200) if j.kind in (JobKind.ai_setup, JobKind.ai_index)]
+    data["last_jobs"] = {
+        k.value: next((job_summary(j) for j in active if j.kind == k), None)
+        for k in (JobKind.ai_setup, JobKind.ai_index)
+    }
+    data["worker"] = worker_status()
+    return data
+
+
+@app.put("/api/ai/settings")
+def ai_save_settings(body: AiSettingsInput, admin: Admin):
+    from ..ai import admin as ai
+
+    try:
+        saved = ai.save_settings(ai.AiSettings(**body.model_dump()))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    A.audit(
+        "ai_settings_updated", admin.username, **{k: v for k, v in body.model_dump().items() if k != "rag_snippets"}
+    )
+    return saved.model_dump()
+
+
+@app.post("/api/ai/setup")
+def ai_setup(admin: Admin):
+    return _enqueue(JobKind.ai_setup, admin)
+
+
+@app.post("/api/ai/index")
+def ai_index(admin: Admin):
+    return _enqueue(JobKind.ai_index, admin)
+
+
+@app.get("/api/ai/knowledge")
+def ai_knowledge_list(_: Admin):
+    from ..ai import admin as ai
+
+    return ai.list_knowledge()
+
+
+@app.get("/api/ai/knowledge/{name}")
+def ai_knowledge_read(name: str, _: Admin):
+    from ..ai import admin as ai
+
+    try:
+        return {"name": name, "content": ai.read_knowledge(name)}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(404, "Document introuvable") from exc
+
+
+@app.put("/api/ai/knowledge/{name}")
+def ai_knowledge_write(name: str, body: KnowledgeInput, admin: Admin):
+    from ..ai import admin as ai
+
+    try:
+        ai.write_knowledge(name, body.content)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    A.audit("knowledge_saved", admin.username, document=name)
+    return {"ok": True, "index": ai.index_info()}
+
+
+@app.delete("/api/ai/knowledge/{name}")
+def ai_knowledge_delete(name: str, admin: Admin):
+    from ..ai import admin as ai
+
+    try:
+        ai.delete_knowledge(name)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(404, "Document introuvable") from exc
+    A.audit("knowledge_deleted", admin.username, document=name)
+    return {"ok": True, "index": ai.index_info()}
+
+
+@app.post("/api/ai/ask")
+def ai_ask(body: Question, admin: Admin):
+    import httpx
+
+    from ..ai import admin as ai
+
+    A.audit("ai_question", admin.username)
+    try:
+        return ai.ask(body.question)
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            502, f"Ollama a refusé la requête ({exc.response.status_code}) : modèle installé ?"
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, f"Ollama injoignable : {exc}") from exc
+
+
+@app.get("/api/ai/dataset")
+def ai_dataset(admin: Admin, n: int = 500):
+    from fastapi.responses import StreamingResponse
+
+    from ..ai.dataset import iter_samples
+
+    n = min(max(n, 10), 5000)
+    gold = STATE_DIR / "ai" / "gold"
+    A.audit("ai_dataset_downloaded", admin.username, samples=n)
+    lines = (json.dumps(x, ensure_ascii=False) + "\n" for x in iter_samples(n, gold_dir=gold))
+    return StreamingResponse(
+        lines,
+        media_type="application/x-ndjson",
+        headers={"Content-Disposition": f'attachment; filename="adsentry-train-{n}.jsonl"'},
+    )
+
+
 # ----------------------------------------------------------------------------- évaluations (lecture)
 
 

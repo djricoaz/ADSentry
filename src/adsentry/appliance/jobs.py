@@ -3,7 +3,8 @@
 L'API n'a pas d'accès réseau sortant (règle 8) : elle se contente de déposer une tâche dans
 STATE_DIR/jobs/<id>.json ; le worker la prend, l'exécute et met à jour l'avancement que la console affiche.
 
-Types : « scan » (collecte + analyse [+ IA]), « test » (connexion AD/Entra), « ai » (analyse IA d'un scan).
+Types : « scan » (collecte + analyse [+ IA]), « test » (connexion AD/Entra), « ai » (analyse IA d'un scan),
+« ai_setup » (téléchargement et création du modèle local), « ai_index » (indexation de la base de connaissances).
 """
 
 from __future__ import annotations
@@ -25,6 +26,8 @@ class JobKind(StrEnum):
     scan = "scan"
     test = "test"
     ai = "ai"
+    ai_setup = "ai_setup"
+    ai_index = "ai_index"
 
 
 class JobStatus(StrEnum):
@@ -170,12 +173,13 @@ class Progress:
     def __init__(self, store: JobStore | None, job: Job | None):
         self.store, self.job = store, job
 
-    def __call__(self, percent: int, step: str, level: str = "info") -> None:
+    def __call__(self, percent: int, step: str, level: str = "info", log: bool = True) -> None:
         if self.job is None or self.store is None:
             return
         self.job.progress = max(self.job.progress, min(100, percent))
         self.job.step = step
-        self.job.log.append({"at": datetime.now(UTC).isoformat(), "level": level, "msg": step})
+        if log:
+            self.job.log.append({"at": datetime.now(UTC).isoformat(), "level": level, "msg": step})
         self.store.save(self.job)
 
     def warn(self, msg: str) -> None:
