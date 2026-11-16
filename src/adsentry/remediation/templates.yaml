@@ -1,0 +1,533 @@
+# Modèles de scripts PowerShell de correction, par règle.
+#
+# Conventions (fournies par l'en-tête généré, voir generator.py) :
+#   $Targets            objets concernés tirés du rapport (chaînes, déjà échappées)
+#   $DomainSid          SID du domaine (Get-ADDomain)
+#   Invoke-Change "description" { action }   n'agit qu'avec -Apply ; sinon affiche [SIMULATION]
+#   Save-State -Name x -InputObject $o       sauvegarde de l'état avant modification (Export-Clixml)
+#   Get-AdsPrincipal -Name x [-Properties p] utilisateur, ordinateur ou groupe par nom / sAMAccountName
+#
+# kind : fix (corrige le constat) | partial (atténue ; une action humaine reste nécessaire)
+# targets : raw (par défaut) | before_arrow (« compte → valeur » : garde le compte) | arrow_pair
+# Règles d'or : jamais d'exécution par ADSentry ; simulation par défaut ; sauvegarde avant modification.
+
+A-ASREP-ROASTABLE: &preauth
+  kind: fix
+  summary: "Réactive la pré-authentification Kerberos sur les comptes concernés."
+  body: |
+    foreach ($name in $Targets) {
+        $obj = Get-AdsPrincipal -Name $name -Properties userAccountControl
+        if (-not $obj) { continue }
+        Save-State -Name $name -InputObject $obj
+        Invoke-Change "Exiger la pré-authentification Kerberos pour $name" {
+            Set-ADAccountControl -Identity $obj.DistinguishedName -DoesNotRequirePreAuth $false
+        }
+    }
+P-ADMIN-NO-PREAUTH: *preauth
+
+A-DES-ENABLED:
+  kind: fix
+  summary: "Retire l'option « utiliser uniquement DES » des comptes concernés."
+  body: |
+    foreach ($name in $Targets) {
+        $obj = Get-AdsPrincipal -Name $name -Properties userAccountControl
+        if (-not $obj) { continue }
+        Save-State -Name $name -InputObject $obj
+        Invoke-Change "Retirer « DES uniquement » de $name" {
+            Set-ADAccountControl -Identity $obj.DistinguishedName -UseDESKeyOnly $false
+        }
+    }
+
+A-REVERSIBLE-ENCRYPTION:
+  kind: partial
+  summary: "Désactive le chiffrement réversible ; le mot de passe doit ensuite être changé pour effacer la copie existante."
+  body: |
+    foreach ($name in $Targets) {
+        $obj = Get-AdsPrincipal -Name $name -Properties userAccountControl
+        if (-not $obj) { continue }
+        Save-State -Name $name -InputObject $obj
+        Invoke-Change "Désactiver le chiffrement réversible pour $name" {
+            Set-ADAccountControl -Identity $obj.DistinguishedName -AllowReversiblePasswordEncryption $false
+        }
+    }
+    Write-Warning "Faites changer le mot de passe de ces comptes : la copie réversible existante n'est effacée qu'au prochain changement."
+
+S-PWD-NOT-REQUIRED:
+  kind: fix
+  summary: "Retire l'indicateur « mot de passe non requis » (PASSWD_NOTREQD)."
+  body: |
+    foreach ($name in $Targets) {
+        $obj = Get-AdsPrincipal -Name $name -Properties userAccountControl
+        if (-not $obj) { continue }
+        Save-State -Name $name -InputObject $obj
+        Invoke-Change "Exiger un mot de passe pour $name" {
+            Set-ADAccountControl -Identity $obj.DistinguishedName -PasswordNotRequired $false
+        }
+    }
+
+S-PWD-NEVER-EXPIRES: &neverexpires
+  kind: fix
+  summary: "Retire « le mot de passe n'expire jamais ». Les comptes de service doivent d'abord passer en gMSA."
+  body: |
+    Write-Warning "Vérifiez qu'aucun de ces comptes n'est un compte de service : son mot de passe expirerait. Préférez un gMSA."
+    foreach ($name in $Targets) {
+        $obj = Get-AdsPrincipal -Name $name -Properties userAccountControl, servicePrincipalName
+        if (-not $obj) { continue }
+        if ($obj.servicePrincipalName) { Write-Warning "$name porte un SPN : compte de service probable, ignoré."; continue }
+        Save-State -Name $name -InputObject $obj
+        Invoke-Change "Faire expirer le mot de passe de $name selon la stratégie" {
+            Set-ADAccountControl -Identity $obj.DistinguishedName -PasswordNeverExpires $false
+        }
+    }
+P-SERVICE-DOMAIN-ADMIN: *neverexpires
+
+P-ADMIN-DELEGATABLE:
+  kind: fix
+  summary: "Marque les comptes privilégiés « sensible et ne peut pas être délégué »."
+  body: |
+    foreach ($name in $Targets) {
+        $obj = Get-AdsPrincipal -Name $name -Properties userAccountControl
+        if (-not $obj) { continue }
+        Save-State -Name $name -InputObject $obj
+        Invoke-Change "Marquer $name comme non délégable" {
+            Set-ADAccountControl -Identity $obj.DistinguishedName -AccountNotDelegated $true
+        }
+    }
+
+P-ADMIN-NOT-PROTECTED-USERS:
+  kind: fix
+  summary: "Ajoute les comptes privilégiés au groupe Protected Users (à tester d'abord : NTLM, DES, RC4 et délégation y sont interdits)."
+  body: |
+    Write-Warning "Protected Users interdit NTLM, la délégation et le cache des identifiants : testez avec un compte avant de généraliser. N'y placez pas de comptes de service."
+    $group = Get-ADGroup -Identity "$DomainSid-525"
+    Save-State -Name 'Protected-Users-membres' -InputObject (Get-ADGroupMember -Identity $group)
+    foreach ($name in $Targets) {
+        $obj = Get-AdsPrincipal -Name $name
+        if (-not $obj) { continue }
+        Invoke-Change "Ajouter $name à Protected Users" {
+            Add-ADGroupMember -Identity $group -Members $obj.DistinguishedName
+        }
+    }
+
+P-UNCONSTRAINED-DELEGATION:
+  kind: fix
+  summary: "Retire la délégation Kerberos non contrainte (passer ensuite en délégation contrainte si un service en a besoin)."
+  body: |
+    Write-Warning "Identifiez d'abord les services qui utilisent cette délégation : ils devront passer en délégation contrainte ou RBCD."
+    foreach ($name in $Targets) {
+        $obj = Get-AdsPrincipal -Name $name -Properties userAccountControl
+        if (-not $obj) { continue }
+        Save-State -Name $name -InputObject $obj
+        Invoke-Change "Retirer la délégation non contrainte de $name" {
+            Set-ADAccountControl -Identity $obj.DistinguishedName -TrustedForDelegation $false
+        }
+    }
+
+P-DELEGATION-TO-DC:
+  kind: fix
+  targets: arrow_pair
+  summary: "Retire les services de contrôleurs de domaine de la délégation contrainte des comptes non administrateurs."
+  body: |
+    foreach ($pair in $Targets) {
+        $name, $spn = $pair
+        $obj = Get-AdsPrincipal -Name $name -Properties 'msDS-AllowedToDelegateTo'
+        if (-not $obj) { continue }
+        Save-State -Name $name -InputObject $obj
+        Invoke-Change "Retirer $spn de la délégation de $name" {
+            Set-ADObject -Identity $obj.DistinguishedName -Remove @{ 'msDS-AllowedToDelegateTo' = $spn }
+        }
+    }
+
+P-DELEGATION-KRBTGT:
+  kind: fix
+  summary: "Retire les entrées de délégation pointant vers le service krbtgt."
+  body: |
+    foreach ($name in $Targets) {
+        $obj = Get-AdsPrincipal -Name $name -Properties 'msDS-AllowedToDelegateTo'
+        if (-not $obj) { continue }
+        Save-State -Name $name -InputObject $obj
+        foreach ($spn in @($obj.'msDS-AllowedToDelegateTo' | Where-Object { $_ -like 'krbtgt/*' })) {
+            Invoke-Change "Retirer $spn de la délégation de $name" {
+                Set-ADObject -Identity $obj.DistinguishedName -Remove @{ 'msDS-AllowedToDelegateTo' = $spn }
+            }
+        }
+    }
+
+P-UNKNOWN-DELEGATION:
+  kind: fix
+  summary: "Retire les entrées de délégation vers des hôtes absents de l'annuaire."
+  body: |
+    foreach ($name in $Targets) {
+        $obj = Get-AdsPrincipal -Name $name -Properties 'msDS-AllowedToDelegateTo'
+        if (-not $obj) { continue }
+        Save-State -Name $name -InputObject $obj
+        foreach ($spn in @($obj.'msDS-AllowedToDelegateTo')) {
+            $hostName = (($spn -split '/', 2)[1] -split '[:/]')[0]
+            $short = ($hostName -split '\.')[0] -replace "'", "''"
+            $fqdn = $hostName -replace "'", "''"
+            if (Get-ADComputer -Filter "dNSHostName -eq '$fqdn' -or Name -eq '$short'") { continue }
+            Invoke-Change "Retirer $spn (hôte introuvable) de la délégation de $name" {
+                Set-ADObject -Identity $obj.DistinguishedName -Remove @{ 'msDS-AllowedToDelegateTo' = $spn }
+            }
+        }
+    }
+
+P-DC-CONSTRAINED-DELEGATION: &dcdeleg
+  kind: fix
+  summary: "Retire la délégation contrainte (et la transition de protocole) configurée sur des contrôleurs de domaine."
+  body: |
+    foreach ($name in $Targets) {
+        $obj = Get-ADComputer -Identity $name -Properties 'msDS-AllowedToDelegateTo', userAccountControl
+        Save-State -Name $name -InputObject $obj
+        Invoke-Change "Vider la délégation contrainte de $name" {
+            Set-ADObject -Identity $obj.DistinguishedName -Clear 'msDS-AllowedToDelegateTo'
+            Set-ADAccountControl -Identity $obj.DistinguishedName -TrustedToAuthForDelegation $false
+        }
+    }
+P-DC-PROTOCOL-TRANSITION: *dcdeleg
+
+P-RBCD-ON-DC:
+  kind: fix
+  summary: "Supprime la délégation basée sur la ressource configurée sur des contrôleurs de domaine."
+  body: |
+    foreach ($name in $Targets) {
+        $obj = Get-ADComputer -Identity $name -Properties PrincipalsAllowedToDelegateToAccount
+        Save-State -Name $name -InputObject $obj
+        Invoke-Change "Vider msDS-AllowedToActOnBehalfOfOtherIdentity sur $name" {
+            Set-ADComputer -Identity $obj.DistinguishedName -PrincipalsAllowedToDelegateToAccount $null
+        }
+    }
+
+S-INACTIVE-USERS: &disable
+  kind: fix
+  summary: "Désactive les comptes inactifs (sans les supprimer) et note la date dans leur description."
+  body: |
+    foreach ($name in $Targets) {
+        $obj = Get-AdsPrincipal -Name $name -Properties description, lastLogonTimestamp
+        if (-not $obj) { continue }
+        Save-State -Name $name -InputObject $obj
+        Invoke-Change "Désactiver $name" {
+            Disable-ADAccount -Identity $obj.DistinguishedName
+            Set-ADObject -Identity $obj.DistinguishedName -Replace @{ description = "Désactivé par ADSentry le $(Get-Date -Format 'yyyy-MM-dd') (inactif)" }
+        }
+    }
+S-INACTIVE-COMPUTERS: *disable
+P-ADMIN-INACTIVE: *disable
+
+A-GUEST-ENABLED:
+  kind: fix
+  summary: "Désactive le compte Invité intégré."
+  body: |
+    $guest = Get-ADUser -Identity "$DomainSid-501"
+    Save-State -Name 'Invite' -InputObject $guest
+    Invoke-Change "Désactiver le compte Invité" { Disable-ADAccount -Identity $guest }
+
+P-DISABLED-ADMINS:
+  kind: fix
+  summary: "Retire les comptes désactivés de tous les groupes d'administration."
+  body: |
+    $privileged = @("$DomainSid-512", "$DomainSid-518", "$DomainSid-519", 'S-1-5-32-544', 'S-1-5-32-548', 'S-1-5-32-549', 'S-1-5-32-550', 'S-1-5-32-551')
+    foreach ($name in $Targets) {
+        $obj = Get-AdsPrincipal -Name $name
+        if (-not $obj) { continue }
+        $groups = @(Get-ADPrincipalGroupMembership -Identity $obj.DistinguishedName | Where-Object { $privileged -contains $_.SID.Value })
+        Save-State -Name "$name-groupes" -InputObject $groups
+        foreach ($g in $groups) {
+            Invoke-Change "Retirer $name du groupe $($g.Name)" {
+                Remove-ADGroupMember -Identity $g -Members $obj.DistinguishedName -Confirm:$false
+            }
+        }
+    }
+
+A-ADMINSDHOLDER-ORPHANS:
+  kind: fix
+  summary: "Efface adminCount et réactive l'héritage des permissions sur les anciens administrateurs."
+  body: |
+    foreach ($name in $Targets) {
+        $obj = Get-AdsPrincipal -Name $name -Properties adminCount, nTSecurityDescriptor
+        if (-not $obj) { continue }
+        Save-State -Name $name -InputObject $obj
+        Invoke-Change "Effacer adminCount et réactiver l'héritage pour $name" {
+            Set-ADObject -Identity $obj.DistinguishedName -Clear adminCount
+            $acl = Get-Acl -Path "AD:$($obj.DistinguishedName)"
+            $acl.SetAccessRuleProtection($false, $true)
+            Set-Acl -Path "AD:$($obj.DistinguishedName)" -AclObject $acl
+        }
+    }
+
+S-PRIMARY-GROUP:
+  kind: fix
+  summary: "Rétablit le groupe principal par défaut (Utilisateurs du domaine ou Ordinateurs du domaine)."
+  body: |
+    foreach ($name in $Targets) {
+        $obj = Get-AdsPrincipal -Name $name -Properties primaryGroupID, objectClass
+        if (-not $obj) { continue }
+        $rid = if ($obj.objectClass -eq 'computer') { 515 } else { 513 }
+        $group = Get-ADGroup -Identity "$DomainSid-$rid"
+        Save-State -Name $name -InputObject $obj
+        Invoke-Change "Rétablir le groupe principal de $name ($($group.Name))" {
+            if (-not (Get-ADGroupMember -Identity $group | Where-Object { $_.distinguishedName -eq $obj.DistinguishedName })) {
+                Add-ADGroupMember -Identity $group -Members $obj.DistinguishedName
+            }
+            Set-ADObject -Identity $obj.DistinguishedName -Replace @{ primaryGroupID = $rid }
+        }
+    }
+
+S-SID-HISTORY: &sidhistory
+  kind: fix
+  summary: "Supprime les valeurs d'historique SID (après la fin des migrations qui en dépendent)."
+  body: |
+    Write-Warning "Vérifiez qu'aucune migration en cours ne repose sur l'historique SID de ces comptes."
+    foreach ($name in $Targets) {
+        $obj = Get-AdsPrincipal -Name $name -Properties sIDHistory
+        if (-not $obj) { continue }
+        Save-State -Name $name -InputObject $obj
+        foreach ($sid in @($obj.sIDHistory)) {
+            Invoke-Change "Retirer $($sid.Value) de l'historique SID de $name" {
+                Set-ADObject -Identity $obj.DistinguishedName -Remove @{ sIDHistory = $sid.Value }
+            }
+        }
+    }
+T-SID-HISTORY-DANGEROUS: *sidhistory
+T-SID-HISTORY-SAME-DOMAIN: *sidhistory
+T-SID-HISTORY-UNKNOWN-DOMAIN: *sidhistory
+
+A-PRE2K-ANONYMOUS: &pre2k
+  kind: fix
+  summary: "Retire les membres trop larges du groupe « Accès compatible pré-Windows 2000 »."
+  body: |
+    Write-Warning "Des applications anciennes peuvent dépendre de ce groupe : testez avant de généraliser."
+    $wellKnown = @{ 'Anonymous Logon' = 'S-1-5-7'; 'Authenticated Users' = 'S-1-5-11'; 'Everyone' = 'S-1-1-0' }
+    $group = Get-ADGroup -Identity 'S-1-5-32-554'
+    Save-State -Name 'Pre-Windows-2000-membres' -InputObject (Get-ADGroupMember -Identity $group)
+    foreach ($name in $Targets) {
+        $member = if ($wellKnown.ContainsKey($name)) {
+            Get-ADObject -Filter "objectSid -eq '$($wellKnown[$name])'" -SearchBase "CN=ForeignSecurityPrincipals,$((Get-ADDomain).DistinguishedName)"
+        } else { Get-AdsPrincipal -Name $name }
+        if (-not $member) { Write-Warning "Membre introuvable : $name"; continue }
+        Invoke-Change "Retirer $name du groupe Accès compatible pré-Windows 2000" {
+            Remove-ADGroupMember -Identity $group -Members $member.DistinguishedName -Confirm:$false
+        }
+    }
+A-PRE2K-AUTHENTICATED-USERS: *pre2k
+A-PRE2K-OTHER: *pre2k
+
+P-DNSADMINS-NOT-EMPTY:
+  kind: fix
+  summary: "Retire les membres du groupe DnsAdmins (l'administration DNS passe par les administrateurs du domaine)."
+  body: |
+    $group = Get-ADGroup -Identity 'DnsAdmins'
+    Save-State -Name 'DnsAdmins-membres' -InputObject (Get-ADGroupMember -Identity $group)
+    foreach ($name in $Targets) {
+        $obj = Get-AdsPrincipal -Name $name
+        if (-not $obj) { continue }
+        Invoke-Change "Retirer $name de DnsAdmins" {
+            Remove-ADGroupMember -Identity $group -Members $obj.DistinguishedName -Confirm:$false
+        }
+    }
+
+P-SCHEMA-ADMINS:
+  kind: fix
+  summary: "Vide le groupe Schema Admins (à remplir uniquement le temps d'une modification du schéma)."
+  body: |
+    $group = Get-ADGroup -Identity "$DomainSid-518"
+    $members = @(Get-ADGroupMember -Identity $group)
+    Save-State -Name 'Schema-Admins-membres' -InputObject $members
+    foreach ($m in $members) {
+        Invoke-Change "Retirer $($m.Name) de Schema Admins" {
+            Remove-ADGroupMember -Identity $group -Members $m.distinguishedName -Confirm:$false
+        }
+    }
+
+P-OPERATORS-NOT-EMPTY:
+  kind: fix
+  summary: "Vide les groupes d'opérateurs intégrés (Account, Server, Print, Backup Operators)."
+  body: |
+    Write-Warning "Ces groupes donnent des droits équivalents à administrateur de domaine : déléguez plutôt des droits ciblés sur des OU."
+    $operatorSids = @('S-1-5-32-548', 'S-1-5-32-549', 'S-1-5-32-550', 'S-1-5-32-551')
+    foreach ($name in $Targets) {
+        # nom localisé selon la langue de l'AD : on résout le groupe, puis on vérifie son SID
+        $group = Get-ADGroup -Filter "Name -eq '$($name -replace "'", "''")'" | Where-Object { $operatorSids -contains $_.SID.Value }
+        if (-not $group) { Write-Warning "Groupe d'opérateurs non reconnu : $name"; continue }
+        $members = @(Get-ADGroupMember -Identity $group)
+        Save-State -Name "$name-membres" -InputObject $members
+        foreach ($m in $members) {
+            Invoke-Change "Retirer $($m.Name) de $name" {
+                Remove-ADGroupMember -Identity $group -Members $m.distinguishedName -Confirm:$false
+            }
+        }
+    }
+
+P-RODC-ALLOWED-GROUP:
+  kind: fix
+  summary: "Retire les membres du groupe « Allowed RODC Password Replication Group »."
+  body: |
+    $group = Get-ADGroup -Identity "$DomainSid-571"
+    Save-State -Name 'Allowed-RODC-membres' -InputObject (Get-ADGroupMember -Identity $group)
+    foreach ($name in $Targets) {
+        $obj = Get-AdsPrincipal -Name $name
+        if (-not $obj) { continue }
+        Invoke-Change "Retirer $name du groupe de réplication RODC autorisée" {
+            Remove-ADGroupMember -Identity $group -Members $obj.DistinguishedName -Confirm:$false
+        }
+    }
+
+P-UNPROTECTED-OU:
+  kind: fix
+  summary: "Protège les OU contre la suppression accidentelle."
+  body: |
+    foreach ($dn in $Targets) {
+        $ou = Get-ADOrganizationalUnit -Identity $dn -Properties ProtectedFromAccidentalDeletion
+        Save-State -Name $ou.Name -InputObject $ou
+        Invoke-Change "Protéger $dn contre la suppression accidentelle" {
+            Set-ADOrganizationalUnit -Identity $dn -ProtectedFromAccidentalDeletion $true
+        }
+    }
+
+A-MACHINE-ACCOUNT-QUOTA:
+  kind: fix
+  summary: "Ramène à 0 le nombre d'ordinateurs que chaque utilisateur peut joindre au domaine."
+  body: |
+    Write-Warning "Les jonctions au domaine devront passer par un compte ou un groupe délégué sur l'OU des ordinateurs."
+    $domainObj = Get-ADDomain
+    Save-State -Name 'domaine' -InputObject (Get-ADObject -Identity $domainObj.DistinguishedName -Properties 'ms-DS-MachineAccountQuota')
+    Invoke-Change "ms-DS-MachineAccountQuota = 0" {
+        Set-ADDomain -Identity $domainObj -Replace @{ 'ms-DS-MachineAccountQuota' = 0 }
+    }
+
+A-LOCKOUT-DISABLED:
+  kind: fix
+  summary: "Active le verrouillage des comptes (10 tentatives, 15 minutes)."
+  body: |
+    Write-Warning "Si la stratégie de mot de passe est aussi définie dans la Default Domain Policy, modifiez-la à l'identique pour qu'elle ne revienne pas."
+    Save-State -Name 'strategie-mot-de-passe' -InputObject (Get-ADDefaultDomainPasswordPolicy)
+    Invoke-Change "Seuil de verrouillage 10, durée et fenêtre de 15 minutes" {
+        Set-ADDefaultDomainPasswordPolicy -Identity $Domain -LockoutThreshold 10 -LockoutDuration '00:15:00' -LockoutObservationWindow '00:15:00'
+    }
+
+S-RECYCLE-BIN:
+  kind: fix
+  summary: "Active la corbeille Active Directory (opération irréversible, sans impact sur l'existant)."
+  body: |
+    Write-Warning "L'activation de la corbeille est définitive (elle ne peut pas être désactivée)."
+    $forest = Get-ADForest
+    Invoke-Change "Activer la corbeille AD de la forêt $($forest.Name)" {
+        Enable-ADOptionalFeature -Identity 'Recycle Bin Feature' -Scope ForestOrConfigurationSet -Target $forest.Name -Confirm:$false
+    }
+
+A-SMARTCARD-PWD-ROTATION:
+  kind: fix
+  summary: "Active la rotation automatique des secrets des comptes « carte à puce obligatoire »."
+  body: |
+    $domainObj = Get-ADDomain
+    Save-State -Name 'domaine' -InputObject (Get-ADObject -Identity $domainObj.DistinguishedName -Properties 'msDS-ExpirePasswordsOnSmartCardOnlyAccounts')
+    Invoke-Change "msDS-ExpirePasswordsOnSmartCardOnlyAccounts = vrai" {
+        Set-ADObject -Identity $domainObj.DistinguishedName -Replace @{ 'msDS-ExpirePasswordsOnSmartCardOnlyAccounts' = $true }
+    }
+
+A-SMARTCARD-OLD-PWD:
+  kind: fix
+  summary: "Régénère le secret des comptes « carte à puce obligatoire » (décocher puis recocher l'option)."
+  body: |
+    foreach ($name in $Targets) {
+        $obj = Get-AdsPrincipal -Name $name -Properties userAccountControl
+        if (-not $obj) { continue }
+        Save-State -Name $name -InputObject $obj
+        Invoke-Change "Régénérer le secret de $name" {
+            Set-ADUser -Identity $obj.DistinguishedName -SmartcardLogonRequired $false
+            Set-ADUser -Identity $obj.DistinguishedName -SmartcardLogonRequired $true
+        }
+    }
+
+S-AES-NOT-ENABLED:
+  kind: partial
+  summary: "Autorise AES (et lui seul) pour Kerberos ; le mot de passe doit être changé ensuite pour générer les clés AES."
+  body: |
+    foreach ($name in $Targets) {
+        $obj = Get-AdsPrincipal -Name $name -Properties 'msDS-SupportedEncryptionTypes', objectClass
+        if (-not $obj) { continue }
+        Save-State -Name $name -InputObject $obj
+        Invoke-Change "Types de chiffrement Kerberos AES128 et AES256 pour $name" {
+            if ($obj.objectClass -eq 'computer') {
+                Set-ADComputer -Identity $obj.DistinguishedName -KerberosEncryptionType AES128, AES256
+            } else {
+                Set-ADUser -Identity $obj.DistinguishedName -KerberosEncryptionType AES128, AES256
+            }
+        }
+    }
+    Write-Warning "Changez le mot de passe de ces comptes pour que les clés AES existent, puis vérifiez les applications qui les utilisent."
+
+A-KERBEROASTABLE: &kerberoast
+  kind: partial
+  summary: "Limite les comptes avec SPN à AES (attaque hors ligne plus lente) ; la vraie correction est un gMSA ou un mot de passe de 25 caractères ou plus."
+  body: |
+    foreach ($name in $Targets) {
+        $obj = Get-AdsPrincipal -Name $name -Properties servicePrincipalName, 'msDS-SupportedEncryptionTypes', pwdLastSet
+        if (-not $obj) { continue }
+        Save-State -Name $name -InputObject $obj
+        Write-Host "$name : SPN = $($obj.servicePrincipalName -join ', ')"
+        Invoke-Change "Restreindre $name à AES pour Kerberos" {
+            Set-ADUser -Identity $obj.DistinguishedName -KerberosEncryptionType AES128, AES256
+        }
+    }
+    Write-Warning "Étape suivante : remplacer ces comptes par des gMSA (New-ADServiceAccount) ou leur donner un mot de passe aléatoire de 25 caractères ou plus."
+P-ADMIN-KERBEROASTABLE: *kerberoast
+
+# ----------------------------------------------------------------------------- Entra ID (Microsoft Graph PowerShell)
+
+E-USER-CONSENT:
+  kind: fix
+  module: Microsoft.Graph
+  scopes: [Policy.ReadWrite.Authorization]
+  summary: "Retire aux utilisateurs le droit de consentir eux-mêmes à des applications."
+  body: |
+    Save-State -Name 'authorizationPolicy' -InputObject (Get-MgPolicyAuthorizationPolicy)
+    Invoke-Change "Désactiver le consentement des utilisateurs" {
+        Update-MgPolicyAuthorizationPolicy -BodyParameter @{ defaultUserRolePermissions = @{ permissionGrantPoliciesAssigned = @() } }
+    }
+    Write-Warning "Activez le workflow de demande de consentement administrateur pour que les utilisateurs puissent demander une application."
+
+E-USERS-REGISTER-APPS:
+  kind: fix
+  module: Microsoft.Graph
+  scopes: [Policy.ReadWrite.Authorization]
+  summary: "Retire aux utilisateurs le droit d'inscrire des applications."
+  body: |
+    Save-State -Name 'authorizationPolicy' -InputObject (Get-MgPolicyAuthorizationPolicy)
+    Invoke-Change "allowedToCreateApps = faux" {
+        Update-MgPolicyAuthorizationPolicy -BodyParameter @{ defaultUserRolePermissions = @{ allowedToCreateApps = $false } }
+    }
+
+E-USERS-CREATE-TENANTS:
+  kind: fix
+  module: Microsoft.Graph
+  scopes: [Policy.ReadWrite.Authorization]
+  summary: "Retire aux utilisateurs le droit de créer des tenants."
+  body: |
+    Save-State -Name 'authorizationPolicy' -InputObject (Get-MgPolicyAuthorizationPolicy)
+    Invoke-Change "allowedToCreateTenants = faux" {
+        Update-MgPolicyAuthorizationPolicy -BodyParameter @{ defaultUserRolePermissions = @{ allowedToCreateTenants = $false } }
+    }
+
+E-GUEST-INVITE-EVERYONE:
+  kind: fix
+  module: Microsoft.Graph
+  scopes: [Policy.ReadWrite.Authorization]
+  summary: "Réserve l'invitation d'invités aux administrateurs et au rôle « Inviteur d'invités »."
+  body: |
+    Save-State -Name 'authorizationPolicy' -InputObject (Get-MgPolicyAuthorizationPolicy)
+    Invoke-Change "allowInvitesFrom = adminsAndGuestInviters" {
+        Update-MgPolicyAuthorizationPolicy -BodyParameter @{ allowInvitesFrom = 'adminsAndGuestInviters' }
+    }
+
+E-GUEST-SAME-AS-MEMBER: &guestrole
+  kind: fix
+  module: Microsoft.Graph
+  scopes: [Policy.ReadWrite.Authorization]
+  summary: "Restreint l'accès des invités à leurs propres objets."
+  body: |
+    Save-State -Name 'authorizationPolicy' -InputObject (Get-MgPolicyAuthorizationPolicy)
+    Invoke-Change "Rôle des invités : accès restreint" {
+        Update-MgPolicyAuthorizationPolicy -BodyParameter @{ guestUserRoleId = '2af84b1e-32c8-42b7-82bc-daa82404023b' }
+    }
+E-GUEST-NOT-RESTRICTED: *guestrole

@@ -718,7 +718,7 @@ def list_scans(_: Viewer):
 
     out = []
     for p in DATA_DIR.glob("*.json"):
-        if p.name.endswith((".ai.json", ".graph.json")):
+        if p.name.endswith((".ai.json", ".graph.json", ".scripts.json")):
             continue
         r = ScanResult.model_validate_json(p.read_text(encoding="utf-8"))
         out.append(
@@ -753,6 +753,116 @@ def get_topology(scan_id: str, _: Viewer):
     if not path.exists():
         raise HTTPException(404, "Topologie indisponible pour ce rapport (antérieur à la fonction) : relancez un scan")
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+# ----------------------------------------------------------------------------- scripts de correction
+
+
+def _rule_and_finding(scan_id: str, rule_id: str):
+    result = _load(scan_id)
+    finding = next((f for f in result.findings if f.rule_id == rule_id), None)
+    rule = next((r for r in load_rules() if r.id == rule_id), None)
+    if finding is None or rule is None:
+        raise HTTPException(404, "Constat introuvable dans ce rapport")
+    return result, rule, finding
+
+
+def _ai_drafts(scan_id: str) -> dict:
+    path = DATA_DIR / f"{scan_id}.scripts.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+
+def _ps1_response(text: str, filename: str) -> Response:
+    # UTF-8 avec BOM : Windows PowerShell 5.1 lit sinon les accents comme de l'ANSI
+    return Response(
+        ("\ufeff" + text).encode("utf-8"),
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/scans/{scan_id}/scripts")
+def list_scripts(scan_id: str, _: Viewer):
+    from ..remediation.generator import build_script
+
+    result = _load(scan_id)
+    rules = {r.id: r for r in load_rules()}
+    drafts = _ai_drafts(scan_id)
+    out = []
+    for f in result.findings:
+        if f.rule_id in rules:
+            item = build_script(rules[f.rule_id], f, result).public(with_text=False)
+            item["ai_draft"] = f.rule_id in drafts
+            out.append(item)
+    return out
+
+
+@app.get("/api/scans/{scan_id}/scripts.zip")
+def scripts_zip(scan_id: str, _: Viewer):
+    import io
+    import zipfile
+
+    from ..remediation.generator import KIND_LABELS, build_ai_script, build_script
+
+    result = _load(scan_id)
+    rules = {r.id: r for r in load_rules()}
+    drafts = _ai_drafts(scan_id)
+    buf = io.BytesIO()
+    index = [
+        f"Scripts de correction ADSentry — {result.domain} — rapport du {result.collected_at:%Y-%m-%d}",
+        "",
+        "Tous les scripts s'exécutent en SIMULATION par défaut ; ajoutez -Apply après relecture et test.",
+        "Chaque script vérifie le domaine (ou le tenant), sauvegarde l'état avant modification et journalise.",
+        "",
+    ]
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for f in sorted(result.findings, key=lambda f: (-f.points, f.rule_id)):
+            if f.rule_id not in rules:
+                continue
+            s = build_script(rules[f.rule_id], f, result)
+            folder = {"fix": "1-corrections", "partial": "2-attenuations", "guide": "3-guides"}[s.kind]
+            z.writestr(f"{folder}/{s.filename}", "\ufeff" + s.text)
+            index.append(f"[{KIND_LABELS[s.kind]}] {folder}/{s.filename} — {f.title}")
+            if f.rule_id in drafts:
+                try:
+                    d = build_ai_script(rules[f.rule_id], f, result, drafts[f.rule_id]["body"])
+                    z.writestr(f"4-brouillons-ia-a-relire/{d.filename}", "\ufeff" + d.text)
+                except ValueError:
+                    pass
+        z.writestr("LISEZMOI.txt", "\ufeff" + "\r\n".join(index))
+    name = f"adsentry-scripts-{scan_id}.zip"
+    return Response(
+        buf.getvalue(), media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'}
+    )
+
+
+@app.get("/api/scans/{scan_id}/scripts/{rule_id}")
+def get_script(scan_id: str, rule_id: str, _: Viewer, download: bool = False, variant: str = "template"):
+    from ..remediation.generator import build_ai_script, build_script
+
+    result, rule, finding = _rule_and_finding(scan_id, rule_id)
+    script = build_script(rule, finding, result)
+    draft = _ai_drafts(scan_id).get(rule_id)
+    ai = None
+    if draft:
+        try:
+            ai = build_ai_script(rule, finding, result, draft["body"])
+        except ValueError:
+            ai = None
+    if download:
+        chosen = ai if variant == "ai" and ai else script
+        return _ps1_response(chosen.text, chosen.filename)
+    out = script.public()
+    out["ai_draft"] = (
+        {**ai.public(), "generated_at": draft.get("generated_at"), "model": draft.get("model")} if ai else None
+    )
+    return out
+
+
+@app.post("/api/scans/{scan_id}/scripts/{rule_id}/ai")
+def ai_script(scan_id: str, rule_id: str, admin: Admin):
+    _rule_and_finding(scan_id, rule_id)
+    return _enqueue(JobKind.ai_script, admin, scan_id=scan_id, target=rule_id)
 
 
 @app.get("/api/scans/{scan_id}/ai-analysis")
@@ -802,6 +912,7 @@ def delete_scan(scan_id: str, admin: Admin):
     (DATA_DIR / f"{scan_id}.json").unlink()
     (DATA_DIR / f"{scan_id}.ai.json").unlink(missing_ok=True)
     (DATA_DIR / f"{scan_id}.graph.json").unlink(missing_ok=True)
+    (DATA_DIR / f"{scan_id}.scripts.json").unlink(missing_ok=True)
     A.audit("scan_deleted", admin.username, scan=scan_id)
     return {"ok": True}
 

@@ -223,6 +223,12 @@ def execute_job(job: Job, store: JobStore, secrets: SecretStore | None = None) -
             _ai(DATA_DIR / f"{job.scan_id}.json", job.scan_id)
         elif job.kind == JobKind.ai_setup:
             job.result = setup_ai(progress)
+        elif job.kind == JobKind.ai_script:
+            from ..remediation.ai import draft_script
+
+            progress(10, f"Rédaction d'un brouillon de script pour {job.target} par l'IA locale")
+            result = ScanResult.model_validate_json((DATA_DIR / f"{job.scan_id}.json").read_text(encoding="utf-8"))
+            job.result = draft_script(job.scan_id, result, job.target, DATA_DIR)
         elif job.kind == JobKind.ai_index:
             from ..ai.admin import build_index
 

@@ -588,6 +588,8 @@ class TemplateClassification(BaseModel):
 
 class ScanResult(BaseModel):
     domain: str
+    ad_domain: str | None = None  # nom DNS du domaine AD audité (scripts de correction)
+    tenant_id: str | None = None  # tenant Entra audité
     collected_at: datetime
     analyzed_at: datetime
     findings: list[Finding]
