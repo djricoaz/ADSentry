@@ -40,6 +40,7 @@ const VIEWS = {
   jobs: { title: "Tâches", group: "admin", admin: true },
   users: { title: "Comptes et rôles", group: "admin", admin: true },
   audit: { title: "Journal d'audit", group: "admin", admin: true },
+  ai: { title: "IA locale", group: "admin", admin: true },
 };
 
 const state = { scans: [], scanId: null, scan: null, domain: null, rules: null, mitre: null, filters: {}, user: null, minPassword: 12, period: "" };
@@ -1080,7 +1081,7 @@ function scheduleEditor(cron) {
 }
 
 // ---------------------------------------------------------------------------- tâches : suivi en direct
-const KIND = { scan: "Scan", test: "Test de connexion", ai: "Synthèse IA" };
+const KIND = { scan: "Scan", test: "Test de connexion", ai: "Synthèse IA", ai_setup: "Installation du modèle IA", ai_index: "Indexation de la base de connaissances" };
 const STATUS = { queued: "En attente", running: "En cours", succeeded: "Terminé", failed: "Échec", cancelled: "Annulé" };
 const jobsState = { list: [], worker: null, timer: null, known: new Map() };
 const statusBadge = (s) => el("span", { class: `status status-${s}` }, STATUS[s] || s);
@@ -1104,6 +1105,8 @@ async function pollJobs() {
         toast(`Scan « ${j.target} » terminé : score ${j.result.global_score}/100, ${plural(j.result.findings, "constat", "constats")}`);
       } else if (j.kind === "test") toast(j.status === "succeeded" ? `Connexion à « ${j.target} » réussie` : `Test de « ${j.target} » en échec`);
       else if (j.kind === "ai" && j.status === "succeeded") toast("Synthèse IA disponible");
+      else if (j.kind === "ai_setup" && j.status === "succeeded") toast("Modèle IA installé et prêt");
+      else if (j.kind === "ai_index" && j.status === "succeeded") toast(`Base de connaissances indexée (${j.result.chunks} extraits)`);
       else if (j.status === "failed") toast(`${KIND[j.kind]} en échec : ${j.error || ""}`);
     }
     jobsState.known.set(j.id, j.status);
@@ -1114,9 +1117,10 @@ async function pollJobs() {
   pill.querySelector("span").textContent = active.length ? `${plural(active.length, "tâche", "tâches")} en cours` : "";
   if (finishedScan) await refreshScans();
   const view = currentView();
+  if (view === "ai" && state.liveUpdate) state.liveUpdate();
   if (["targets", "jobs"].includes(view) || (view === "report" && active.some((j) => j.kind === "ai"))) softRender();
   if (finishedScan && ["dashboard", "scans", "overview"].includes(view)) softRender();
-  jobsState.timer = setTimeout(pollJobs, active.length || ["targets", "jobs"].includes(view) ? 2500 : 15000);
+  jobsState.timer = setTimeout(pollJobs, active.length || ["targets", "jobs", "ai"].includes(view) ? 2500 : 15000);
 }
 function workerBanner() {
   const w = jobsState.worker;
@@ -1395,7 +1399,9 @@ const EVENTS = {
   password_changed: "Changement de mot de passe", user_created: "Compte créé", user_updated: "Compte modifié", user_deleted: "Compte supprimé",
   target_created: "Cible créée", target_updated: "Cible modifiée", target_deleted: "Cible supprimée", job_scan: "Scan demandé",
   job_test: "Test de connexion demandé", job_ai: "Synthèse IA demandée", job_cancelled: "Tâche annulée",
-  snapshot_imported: "Snapshot importé", scan_deleted: "Rapport supprimé",
+  snapshot_imported: "Snapshot importé", scan_deleted: "Rapport supprimé", job_ai_setup: "Installation du modèle IA",
+  job_ai_index: "Indexation de la base de connaissances", ai_settings_updated: "Réglages IA modifiés", knowledge_saved: "Document enregistré",
+  knowledge_deleted: "Document supprimé", ai_question: "Question à l'analyste", ai_dataset_downloaded: "Jeu d'entraînement téléchargé",
 };
 async function viewAudit() {
   const list = await api("/audit?limit=500");
@@ -1482,10 +1488,175 @@ async function logout() {
   showAuth("login");
 }
 
+// ---------------------------------------------------------------------------- vue : IA locale (admin)
+const DOC_TEMPLATE = `# Titre du document
+
+## Contexte
+Décrivez ici, avec vos propres mots, une règle ou une procédure interne
+(ex. modèle d'administration Tier 0, procédure de rotation des mots de passe, contacts).
+
+## Procédure
+1. Première étape
+2. Deuxième étape
+`;
+function readyBadge(ok, yes = "Prêt", no = "Absent") {
+  return el("span", { class: `status status-${ok ? "succeeded" : "failed"}` }, ok ? yes : no);
+}
+function aiJobBox(kind) {
+  const j = jobsState.list.find((x) => x.kind === kind && x.active);
+  if (!j) return null;
+  return el("div", { class: "job-live" },
+    el("div", { class: "job-live-head" }, el("strong", {}, `${KIND[kind]} — ${STATUS[j.status]}`), el("span", {}, `${j.progress} %`)),
+    progressBar(j), el("p", { class: "muted small" }, j.step));
+}
+async function viewAi() {
+  const st = await api("/ai/status");
+  if (!jobsState.worker) await pollJobs();
+  const s = st.settings;
+  const idx = st.index;
+
+  // État
+  const statusRow = (label, value, hint) => el("div", { class: "ai-status-item" }, el("span", { class: "k" }, label), value, hint ? el("span", { class: "muted small" }, hint) : null);
+  const status = el("section", { class: "section" }, el("div", { class: "ai-status" },
+    statusRow("Serveur Ollama", readyBadge(st.reachable, `Connecté (v${st.version})`, "Injoignable"), st.reachable ? st.ollama_url : st.error),
+    statusRow("Modèle de base", readyBadge(st.base_ready), s.base_model),
+    statusRow("Modèle analyste", readyBadge(st.analyst_ready), s.analyst_model),
+    statusRow("Embeddings", readyBadge(st.embed_ready), s.embed_model),
+    statusRow("Base de connaissances", idx.built ? readyBadge(!idx.stale, "Indexée", "À réindexer") : readyBadge(false, "", "Non indexée"),
+      idx.built ? `${idx.chunks} extraits · ${fmtDateTime(idx.built_at)}` : `${st.knowledge.length} document(s)`)));
+
+  // Installation
+  const busyAi = (k) => jobsState.list.some((j) => j.kind === k && j.active);
+  const setupBtn = el("button", { class: "btn btn-primary", disabled: !st.reachable || busyAi("ai_setup") }, st.analyst_ready ? "Réinstaller / mettre à jour" : "Installer le modèle");
+  setupBtn.addEventListener("click", () => busy(setupBtn, "Envoi…", async () => {
+    try { await api("/ai/setup", { method: "POST" }); toast("Installation lancée"); await pollJobs(); softRender(); } catch (e) { toast(e.message); }
+  }));
+  const lastSetup = st.last_jobs.ai_setup;
+  const setup = section("1. Installer le modèle", "Téléchargement par Ollama, puis création du modèle analyste avec les consignes ADSentry",
+    el("div", { class: "section-body" },
+      !st.reachable ? el("div", { class: "banner" }, el("strong", {}, "Ollama ne répond pas. "),
+        "Sur l'appliance, vérifiez le conteneur « ollama » ; sur un serveur Linux : curl -fsSL https://ollama.com/install.sh | sh, puis relancez la console.") : null,
+      el("p", {}, `Télécharge ${s.base_model} (environ 3 Go) et ${s.embed_model}, puis crée ${s.analyst_model}. Compter 5 à 20 minutes selon la connexion. Le modèle tourne ensuite en local, sur CPU : aucune donnée ne sort.`),
+      el("div", { id: "ai-live-setup" }, aiJobBox("ai_setup")),
+      lastSetup && !lastSetup.active ? el("p", { class: "small" }, "Dernière installation : ", statusBadge(lastSetup.status), " ", fmtDateTime(lastSetup.finished_at),
+        lastSetup.error ? el("span", { class: "note small" }, ` ${lastSetup.error}`) : null) : null,
+      el("div", { class: "actions" }, setupBtn)));
+
+  // Réglages
+  const base = input({ value: s.base_model }), analyst = input({ value: s.analyst_model }), embed = input({ value: s.embed_model });
+  const rag = check("Utiliser la base de connaissances dans les synthèses", s.use_rag, "Les extraits pertinents sont ajoutés au contexte du modèle");
+  const snippets = el("input", { type: "number", min: 0, max: 20, value: s.rag_snippets });
+  const err = formError();
+  const save = el("button", { class: "btn btn-secondary", type: "submit" }, "Enregistrer les réglages");
+  const settingsForm = el("form", { class: "form" },
+    el("div", { class: "grid-fields" }, field("Modèle de base (Ollama)", base, "Ex. qwen3.5:4b (CPU), qwen3.5:9b (plus de RAM)"),
+      field("Nom du modèle analyste", analyst), field("Modèle d'embeddings", embed), field("Extraits maximum par synthèse", snippets)),
+    rag.node, err, el("div", { class: "actions" }, save));
+  settingsForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    busy(save, "Enregistrement…", async () => {
+      try {
+        const body = { base_model: base.value.trim(), analyst_model: analyst.value.trim(), embed_model: embed.value.trim(), use_rag: rag.box.checked, rag_snippets: +snippets.value || 0 };
+        await api("/ai/settings", { method: "PUT", body: JSON.stringify(body) });
+        toast(body.base_model !== s.base_model ? "Réglages enregistrés : relancez l'installation pour le nouveau modèle" : "Réglages enregistrés");
+        softRender();
+      } catch (e2) { showError(err, e2.message); }
+    });
+  });
+
+  // Base de connaissances
+  const indexBtn = el("button", { class: "btn btn-primary", disabled: !st.embed_ready || busyAi("ai_index") }, "Réindexer");
+  indexBtn.addEventListener("click", () => busy(indexBtn, "Envoi…", async () => {
+    try { await api("/ai/index", { method: "POST" }); await pollJobs(); softRender(); } catch (e) { toast(e.message); }
+  }));
+  const docs = st.knowledge.length ? el("div", { class: "table-wrap" }, el("table", { class: "data" },
+    el("thead", {}, el("tr", {}, el("th", {}, "Document"), el("th", { class: "num" }, "Sections"), el("th", { class: "hide-sm" }, "Modifié le"), el("th", {}, ""))),
+    el("tbody", {}, st.knowledge.map((d) => el("tr", {},
+      el("td", {}, el("strong", {}, d.name)), el("td", { class: "num" }, d.sections), el("td", { class: "hide-sm" }, fmtDateTime(d.updated_at)),
+      el("td", { class: "num" }, el("button", { class: "btn btn-link", onclick: () => openDoc(d.name) }, "Modifier"),
+        el("button", { class: "btn btn-link danger", onclick: async () => {
+          if (!confirm(`Supprimer « ${d.name} » ?`)) return;
+          try { await api(`/ai/knowledge/${d.name}`, { method: "DELETE" }); toast("Document supprimé ; pensez à réindexer"); softRender(); } catch (e) { toast(e.message); }
+        } }, "Supprimer"))))))) : el("p", { class: "muted section-body" }, "Aucun document : le catalogue des règles est tout de même indexé.");
+  const knowledge = el("section", { class: "section" },
+    el("div", { class: "section-head" }, el("div", {}, el("h2", {}, "2. Base de connaissances"),
+      el("p", {}, "Vos procédures et politiques internes, consultées par l'analyste. Rédigez avec vos propres mots, sans aucun secret.")),
+    el("div", { class: "actions" }, el("button", { class: "btn btn-secondary", onclick: () => openDoc(null) }, "Nouveau document"), indexBtn)),
+    el("div", { id: "ai-live-index", class: "section-body" }, aiJobBox("ai_index"),
+      idx.built && idx.stale ? el("p", { class: "note small" }, "Des documents ont changé depuis la dernière indexation : cliquez sur « Réindexer ».") : null),
+    docs);
+
+  // Tester l'analyste
+  const q = el("textarea", { rows: 3, placeholder: "Ex. Quel est le risque d'un compte de service avec SPN membre de Domain Admins, et comment le corriger ?" });
+  const answer = el("div", { class: "ai-answer", hidden: true });
+  const askBtn = el("button", { class: "btn btn-primary", disabled: !st.analyst_ready }, "Poser la question");
+  askBtn.addEventListener("click", () => busy(askBtn, "Réflexion… (jusqu'à 1 à 2 minutes sur CPU)", async () => {
+    answer.hidden = false;
+    answer.replaceChildren(el("p", { class: "muted" }, "Le modèle local rédige sa réponse…"));
+    try {
+      const r = await api("/ai/ask", { method: "POST", body: JSON.stringify({ question: q.value }) });
+      answer.replaceChildren(el("div", { class: "ai-text" }, r.answer),
+        el("p", { class: "muted small" }, `Modèle ${r.model} · ${plural(r.context.length, "extrait", "extraits")} de la base de connaissances utilisé(s)`));
+    } catch (e) { answer.replaceChildren(el("p", { class: "note" }, e.message)); }
+  }));
+  const ask = section("3. Tester l'analyste", "Question libre ; ne remplace pas la synthèse d'un scan, fondée sur les seuls constats",
+    el("div", { class: "section-body" }, field("Question", q), el("div", { class: "actions" }, askBtn), answer));
+
+  // Fine-tuning
+  const n = el("select", { "aria-label": "Nombre d'exemples" }, [500, 1500, 3000].map((v) => el("option", { value: v, selected: v === 1500 }, `${v} exemples`)));
+  const dl = el("a", { class: "btn btn-secondary", href: "/api/ai/dataset?n=1500", download: "" }, "Télécharger le jeu d'entraînement");
+  n.addEventListener("change", () => { dl.href = `/api/ai/dataset?n=${n.value}`; });
+  const finetune = section("4. Spécialiser le modèle (optionnel)", "Fine-tuning sur un GPU gratuit, uniquement si les synthèses restent insuffisantes",
+    el("div", { class: "section-body prose" },
+      el("ol", {},
+        el("li", {}, "Téléchargez le jeu d'entraînement : exemples ", el("strong", {}, "100 % synthétiques"), " générés à partir du catalogue, sans aucune donnée de votre annuaire. ", el("span", { class: "inline-fields" }, n, dl)),
+        el("li", {}, "Dans Google Colab (GPU T4), exécutez ai/finetune/train_unsloth_colab.py du dépôt avec ce fichier."),
+        el("li", {}, "Copiez le fichier .gguf obtenu sur le serveur, à côté de ai/Modelfile, remplacez la ligne FROM par ce fichier, puis : ollama create ", s.analyst_model, " -f ai/Modelfile.")),
+      el("p", { class: "muted small" }, "N'envoyez jamais un rapport réel vers un service en ligne : seules les données synthétiques ou de laboratoire peuvent servir à l'entraînement.")));
+
+  // Mises à jour en direct sans effacer les saisies
+  state.liveUpdate = () => {
+    const a = $("ai-live-setup"), b = $("ai-live-index");
+    if (a) a.replaceChildren(...[aiJobBox("ai_setup")].filter(Boolean));
+    if (b) b.replaceChildren(...[aiJobBox("ai_index")].filter(Boolean));
+    const ended = jobsState.list.find((j) => ["ai_setup", "ai_index"].includes(j.kind) && !j.active && jobsState.seenActive?.has(j.id));
+    jobsState.seenActive = new Set(jobsState.list.filter((j) => j.active).map((j) => j.id));
+    if (ended) softRender();
+  };
+  return [workerBanner(),
+    el("p", { class: "muted intro" }, "L'analyste rédige les synthèses à partir des seuls constats du moteur de règles ; il n'invente ni constat ni score. Tout s'exécute sur l'appliance."),
+    status, setup, el("div", { class: "grid-2" }, knowledge, section("Réglages", null, el("div", { class: "section-body" }, settingsForm))), ask, finetune];
+}
+async function openDoc(name) {
+  const err = formError();
+  const fname = input({ value: name || "", disabled: !!name, placeholder: "tier0.md", maxlength: 64 });
+  const content = el("textarea", { rows: 22, class: "mono", spellcheck: "true" });
+  content.value = name ? (await api(`/ai/knowledge/${name}`)).content : DOC_TEMPLATE;
+  const save = el("button", { class: "btn btn-primary", type: "submit" }, "Enregistrer");
+  const form = el("form", { class: "form" },
+    field("Nom du fichier", fname, "Minuscules, chiffres, - et _, extension .md"),
+    field("Contenu (Markdown)", content, "Découpé par sections « ## Titre ». Pas de mot de passe ni de clé : ce texte est fourni au modèle."),
+    err, el("div", { class: "actions" }, save));
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    let n = fname.value.trim().toLowerCase();
+    if (n && !n.endsWith(".md")) n += ".md";
+    busy(save, "Enregistrement…", async () => {
+      try {
+        await api(`/ai/knowledge/${encodeURIComponent(n)}`, { method: "PUT", body: JSON.stringify({ content: content.value }) });
+        closeDrawer();
+        toast("Document enregistré ; cliquez sur « Réindexer » pour qu'il soit pris en compte");
+        softRender();
+      } catch (e2) { showError(err, e2.message); }
+    });
+  });
+  openPanel("Base de connaissances", name || "Nouveau document", form);
+}
+
 // ---------------------------------------------------------------------------- routeur
 const RENDER = { dashboard: viewDashboard, maturity: viewMaturity, compare: viewCompare, overview: viewOverview,
   findings: viewFindings, pki: viewPki, entra: viewEntra, mitre: viewMitre, report: viewReport, scans: viewScans, rules: viewRules,
-  targets: viewTargets, jobs: viewJobs, users: viewUsers, audit: viewAudit, help: viewHelp };
+  targets: viewTargets, jobs: viewJobs, users: viewUsers, audit: viewAudit, help: viewHelp, ai: viewAi };
 
 function currentView() {
   const path = (location.hash.slice(2) || "dashboard").split("?")[0];
