@@ -81,8 +81,11 @@ Objectif : prouver que la collecte produit un Snapshot juste sur un vrai domaine
 
 ## Phase 5 — IA locale (dans cet ordre)
 
-1. [ ] `adsentry-setup` télécharge le modèle ; vérifier les temps de réponse CPU sur l'appliance
-2. [ ] Alimenter `knowledge/` puis `adsentry rag-index`
+1. [x] Installation du modèle depuis la console (Administration > IA locale) avec progression ;
+      [ ] vérifier les temps de réponse CPU sur l'appliance
+2. [x] Base de connaissances éditable dans la console, indexation en tâche de fond, utilisée par les synthèses ;
+      question libre à l'analyste ; téléchargement du jeu d'entraînement synthétique
+      [ ] alimenter la base avec les procédures internes
 3. [ ] **Banc d'évaluation** `ai/eval/` : 30 scans de référence, métriques (JSON valide, règles inventées,
       couverture des critiques, latence) + grille humaine
 4. [ ] 30 à 50 analyses « gold » relues dans `ai/dataset/gold/`

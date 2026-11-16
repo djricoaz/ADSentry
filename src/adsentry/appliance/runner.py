@@ -21,7 +21,7 @@ log = logging.getLogger("adsentry.worker")
 
 
 class _NoProgress:
-    def __call__(self, _percent: int, _step: str, _level: str = "info") -> None:
+    def __call__(self, _percent: int, _step: str, _level: str = "info", log: bool = True) -> None:
         pass
 
     def warn(self, _msg: str) -> None:
@@ -161,10 +161,19 @@ def _wsus_probes(snap: Snapshot):
 
 
 def _ai(result_path: Path, scan_id: str) -> dict:
-    from ..ai.ollama_client import analyze_with_llm
+    from ..ai.admin import context_for, load_settings
+    from ..ai.ollama_client import OllamaClient, analyze_with_llm
 
+    settings = load_settings()
+    client = OllamaClient(model=settings.analyst_model)
     result = ScanResult.model_validate_json(result_path.read_text(encoding="utf-8"))
-    analysis = analyze_with_llm(result)
+    try:
+        context = context_for(result, settings, client)
+    except Exception as exc:  # la base de connaissances est un plus : la synthèse se fait sans elle
+        log.warning("Base de connaissances indisponible (%s)", exc)
+        context = []
+    analysis = analyze_with_llm(result, client=client, context_snippets=context)
+    analysis["_contexte"] = {"extraits": len(context), "modele": settings.analyst_model}
     (DATA_DIR / f"{scan_id}.ai.json").write_text(json.dumps(analysis, ensure_ascii=False, indent=1), encoding="utf-8")
     return analysis
 
@@ -212,6 +221,13 @@ def execute_job(job: Job, store: JobStore, secrets: SecretStore | None = None) -
         if job.kind == JobKind.ai:
             progress(10, "Synthèse par l'IA locale (1 à 5 minutes sur CPU)")
             _ai(DATA_DIR / f"{job.scan_id}.json", job.scan_id)
+        elif job.kind == JobKind.ai_setup:
+            job.result = setup_ai(progress)
+        elif job.kind == JobKind.ai_index:
+            from ..ai.admin import build_index
+
+            progress(10, "Calcul des embeddings du catalogue et des documents")
+            job.result = {"chunks": build_index()}
         else:
             target = next((t for t in load_targets() if t.name == job.target), None)
             if target is None:
@@ -241,6 +257,33 @@ def execute_job(job: Job, store: JobStore, secrets: SecretStore | None = None) -
         }
     )
     return store.save(job)
+
+
+def setup_ai(progress=_noop) -> dict:
+    """Télécharge le modèle de base et le modèle d'embeddings, puis crée le modèle analyste."""
+    from ..ai.admin import OllamaAdmin, load_settings
+
+    s = load_settings()
+    admin = OllamaAdmin()
+    progress(2, f"Connexion à Ollama (version {admin.version()})")
+    last = {"pct": -1}
+
+    def phase(start: int, span: int):
+        def report(frac: float, label: str) -> None:
+            pct = start + int(span * frac) if frac >= 0 else start
+            if frac < 0:  # changement d'état (manifeste, vérification, succès) : journalisé
+                progress(pct, label)
+            elif pct != last["pct"]:  # avancement du téléchargement : étape mise à jour, non journalisée
+                last["pct"] = pct
+                progress(pct, label, log=False)
+
+        return report
+
+    admin.pull(s.base_model, phase(5, 70))
+    admin.pull(s.embed_model, phase(76, 14))
+    progress(92, f"Création du modèle {s.analyst_model} à partir de {s.base_model}")
+    admin.create_analyst(s.analyst_model, s.base_model, lambda st: None)
+    return {"base_model": s.base_model, "embed_model": s.embed_model, "analyst_model": s.analyst_model}
 
 
 def _start_heartbeat(stop: threading.Event | None) -> None:

@@ -38,22 +38,37 @@ def collect_documents(knowledge_dir: Path) -> list[str]:
     return docs
 
 
-def build_index(knowledge_dir: Path, client: OllamaClient | None = None, path: Path = INDEX_PATH) -> int:
+def build_index(
+    knowledge_dir: Path,
+    client: OllamaClient | None = None,
+    path: Path = INDEX_PATH,
+    embed_model: str = "nomic-embed-text",
+    batch: int = 64,
+) -> int:
     client = client or OllamaClient()
     docs = collect_documents(knowledge_dir)
-    vectors = np.array(client.embed(docs), dtype=np.float32)
+    embeddings: list[list[float]] = []
+    for i in range(0, len(docs), batch):  # par lots : évite une requête géante sur CPU
+        embeddings += client.embed(docs[i : i + batch], model=embed_model)
+    vectors = np.array(embeddings, dtype=np.float32)
     vectors /= np.linalg.norm(vectors, axis=1, keepdims=True) + 1e-9
     path.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(path, vectors=vectors, docs=np.array([json.dumps(d) for d in docs]))
     return len(docs)
 
 
-def search(query: str, k: int = 4, client: OllamaClient | None = None, path: Path = INDEX_PATH) -> list[str]:
+def search(
+    query: str,
+    k: int = 4,
+    client: OllamaClient | None = None,
+    path: Path = INDEX_PATH,
+    embed_model: str = "nomic-embed-text",
+) -> list[str]:
     if not path.exists():
         return []
     client = client or OllamaClient()
     data = np.load(path)
-    q = np.array(client.embed([query])[0], dtype=np.float32)
+    q = np.array(client.embed([query], model=embed_model)[0], dtype=np.float32)
     q /= np.linalg.norm(q) + 1e-9
     scores = data["vectors"] @ q
     top = np.argsort(-scores)[:k]
