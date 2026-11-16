@@ -306,6 +306,7 @@ class LdapCollector:
                 "ms-DS-MachineAccountQuota",
                 "msDS-Behavior-Version",
                 "minPwdLength",
+                "lockoutThreshold",
                 "nETBIOSName",
                 "wellKnownObjects",
                 "msDS-ExpirePasswordsOnSmartCardOnlyAccounts",
@@ -636,6 +637,9 @@ class LdapCollector:
             recycle_bin=bool(rb and _as_list(rb[0]["a"].get("msDS-EnabledFeatureBL"))),
             ds_heuristics=_first(ds[0]["a"], "dSHeuristics") if ds else None,
             min_pwd_length=int(_first(a, "minPwdLength", 0)) if _first(a, "minPwdLength") is not None else None,
+            lockout_threshold=(
+                int(_first(a, "lockoutThreshold")) if _first(a, "lockoutThreshold") is not None else None
+            ),
             psos=psos,
             last_backup=meta.get(ATTR_DSA_SIGNATURE),
             sysvol_replication="dfsr" if flags >= 48 else "ntfrs" if dfsr or flags else None,

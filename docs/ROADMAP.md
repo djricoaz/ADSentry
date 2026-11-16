@@ -9,7 +9,8 @@ Une phase = une ou plusieurs sessions ; `/clear` entre deux phases ; commit git 
 
 - [x] Modèle de données `Snapshot` (AD + Entra) / `Rule` / `Finding` / `ScanResult`
 - [x] Moteur de règles YAML + registre `@check` ; périmètres AD / Entra (règles « non évaluées »)
-- [x] **216 règles** : 39 objets obsolètes, 52 privilèges, 11 approbations, 58 anomalies, 27 PKI, 29 Entra ID
+- [x] **230 règles** : 39 objets obsolètes, 55 privilèges, 11 approbations, 64 anomalies, 27 PKI, 34 Entra ID
+      (revue de couverture : docs/COUVERTURE.md)
 - [x] Classification des modèles de certificats
 - [x] MITRE ATT&CK v20.1 validé en ligne, gestion des techniques révoquées
 - [x] Analyseurs SYSVOL (GptTmpl.inf, Registry.pol, audit.csv, scripts.ini, préférences XML)
@@ -41,8 +42,10 @@ Objectif : prouver que la collecte produit un Snapshot juste sur un vrai domaine
 - [ ] Tenant de développement Microsoft 365 (gratuit) + application d'audit (`docs/ENTRA.md`)
 - [ ] Vérifier chaque appel Graph (pagination, `$expand`, licences P1/P2 absentes → None)
 - [ ] Version d'Entra Connect : la récupérer côté serveur Connect ou AD (aujourd'hui saisie manuelle)
-- [ ] Règles supplémentaires : comptes d'urgence exclus de l'accès conditionnel, enregistrement d'appareils,
-      méthodes d'authentification faibles (SMS/voix), journaux d'audit non exportés
+- [x] Règles ajoutées (revue de couverture) : MFA résistante à l'hameçonnage, code d'appareil, stratégies de risque,
+      méthodes SMS/voix, jonction d'appareils sans MFA
+- [ ] Règles supplémentaires : comptes d'urgence exclus de l'accès conditionnel, paramètres PIM, accès
+      inter-tenants, groupes non protégés dans des rôles, journaux d'audit non exportés (docs/COUVERTURE.md)
 
 ## Phase 2 — Collecte hors LDAP restante
 

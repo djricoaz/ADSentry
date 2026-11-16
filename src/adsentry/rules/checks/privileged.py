@@ -353,6 +353,50 @@ def control_path(snap: Snapshot, params: dict) -> CheckResult:
     return CheckResult()
 
 
+# ---------------------------------------------------------------------- appartenance et délégation vers le Tier 0
+
+
+def _admin_group_members(snap: Snapshot) -> set[str]:
+    """SIDs membres (directs, ou via member_of des utilisateurs) des groupes d'administration."""
+    tier0 = tier0_group_sids(snap)
+    members = {m for g in snap.groups if g.sid in tier0 for m in g.members}
+    members |= {u.sid for u in snap.users if tier0 & set(u.member_of)}
+    return members
+
+
+@check("priv_foreign_admins")
+def foreign_admins(snap: Snapshot, params: dict) -> CheckResult:
+    """Comptes ou groupes d'un autre domaine (SID S-1-5-21 étranger) dans les groupes d'administration."""
+    if snap.domain is None:
+        return CheckResult()
+    own = snap.domain.sid + "-"
+    foreign = sorted(s for s in _admin_group_members(snap) if s.startswith("S-1-5-21-") and not s.startswith(own))
+    return CheckResult(affected=[snap.principal_name(s) for s in foreign])
+
+
+@check("priv_disabled_admins")
+def disabled_admins(snap: Snapshot, params: dict) -> CheckResult:
+    members = _admin_group_members(snap)
+    return CheckResult(affected=sorted(u.sam for u in snap.users if not u.enabled and u.sid in members))
+
+
+@check("priv_delegation_to_dc")
+def delegation_to_dc(snap: Snapshot, params: dict) -> CheckResult:
+    """Délégation contrainte d'un compte non Tier 0 vers un service d'un contrôleur de domaine."""
+    dc_hosts = {h.lower() for d in snap.dcs() for h in filter(None, (d.name, d.dns_hostname))}
+    dc_hosts |= {h.split(".", 1)[0] for h in dc_hosts}
+    out = []
+    for p in [*snap.users, *[cp for cp in snap.computers if not cp.is_dc]]:
+        name = getattr(p, "sam", None) or p.name
+        if snap.is_tier0(p.sid) or not getattr(p, "enabled", True):
+            continue
+        for spn in p.allowed_to_delegate_to:
+            host = spn.split("/", 1)[-1].split(":", 1)[0].split("/", 1)[0].lower()
+            if host in dc_hosts:
+                out.append(f"{name} → {spn}")
+    return CheckResult(affected=out)
+
+
 # ----------------------------------------------------------------------------- RODC
 
 

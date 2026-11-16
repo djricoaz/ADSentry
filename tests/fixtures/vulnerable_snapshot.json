@@ -14,6 +14,7 @@
   "recycle_bin": false,
   "ds_heuristics": "00100021010000010002100000020",
   "min_pwd_length": 7,
+  "lockout_threshold": 0,
   "psos": [],
   "last_backup": "2026-09-01T00:00:00Z",
   "sysvol_replication": "ntfrs",
@@ -301,6 +302,28 @@
    "last_logon": "2026-10-30T08:00:00Z",
    "pwd_last_set": "2026-09-15T00:00:00Z",
    "script_path": "\\\\partner.local\\netlogon\\logon.bat"
+  },
+  {
+   "sam": "svc.dcdeleg",
+   "sid": "S-1-5-21-1000-2000-3000-1122",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-513"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "allowed_to_delegate_to": [
+    "cifs/dc01.corp.local"
+   ]
+  },
+  {
+   "sam": "old.admin",
+   "sid": "S-1-5-21-1000-2000-3000-1123",
+   "member_of": [
+    "S-1-5-21-1000-2000-3000-512"
+   ],
+   "last_logon": "2026-10-30T08:00:00Z",
+   "pwd_last_set": "2026-09-15T00:00:00Z",
+   "enabled": false
   },
   {
    "sam": "helpdesk.lead",
@@ -1153,6 +1176,14 @@
    "members": [
     "S-1-5-21-1000-2000-3000-1400"
    ]
+  },
+  {
+   "sid": "S-1-5-32-544",
+   "name": "Administrators",
+   "members": [
+    "S-1-5-21-1000-2000-3000-512",
+    "S-1-5-21-500000001-500000002-500000003-1105"
+   ]
   }
  ],
  "trusts": [
@@ -1318,7 +1349,11 @@
     "machine\\software\\policies\\microsoft\\windows\\windowsupdate\\setproxybehaviorforupdatedetection": 1,
     "machine\\software\\policies\\microsoft\\windows\\windowsupdate\\donotenforceenterprisetlscertpinningforupdatedetection": 1,
     "machine\\software\\microsoft\\windows nt\\currentversion\\setup\\recoveryconsole\\securitylevel": 1,
-    "machine\\software\\policies\\microsoft\\windows\\networkprovider\\hardenedpaths\\\\\\\\*\\sysvol": "RequireMutualAuthentication=0, RequireIntegrity=0"
+    "machine\\software\\policies\\microsoft\\windows\\networkprovider\\hardenedpaths\\\\\\\\*\\sysvol": "RequireMutualAuthentication=0, RequireIntegrity=0",
+    "machine\\software\\policies\\microsoft\\windows\\installer\\alwaysinstallelevated": 1,
+    "machine\\system\\currentcontrolset\\control\\securityproviders\\wdigest\\uselogoncredential": 1,
+    "machine\\software\\policies\\microsoft\\windows nt\\printers\\pointandprint\\nowarningnoelevationoninstall": 1,
+    "machine\\software\\microsoft\\windows nt\\currentversion\\winlogon\\defaultpassword": "Fixture-Synthetique-1"
    },
    "local_group_members": {
     "S-1-5-32-544": [
@@ -1704,6 +1739,12 @@
   ],
   "connect_version": "1.6.4.0",
   "pim_available": true,
+  "weak_auth_methods": [
+   "sms",
+   "voice"
+  ],
+  "device_join_all_users": true,
+  "device_join_mfa_required": false,
   "users": [
    {
     "id": "u1",

@@ -206,6 +206,7 @@ class DomainInfo(BaseModel):
     recycle_bin: bool = True
     ds_heuristics: str | None = None
     min_pwd_length: int | None = None
+    lockout_threshold: int | None = None  # 0 = verrouillage désactivé ; None = non collecté
     psos: list[Pso] = []
     last_backup: datetime | None = None
     sysvol_replication: str | None = None  # dfsr | ntfrs
@@ -366,6 +367,9 @@ class ConditionalAccessPolicy(BaseModel):
     client_app_types: list[str] = []  # all | browser | mobileAppsAndDesktopClients | exchangeActiveSync | other
     grant_controls: list[str] = []  # mfa | block | compliantDevice ...
     authentication_strength: str | None = None
+    auth_flows: list[str] = []  # deviceCodeFlow | authenticationTransfer
+    user_risk_levels: list[str] = []
+    sign_in_risk_levels: list[str] = []
 
 
 class EntraTenant(BaseModel):
@@ -381,6 +385,9 @@ class EntraTenant(BaseModel):
     connect_version: str | None = None
     connect_last_sync: datetime | None = None
     pim_available: bool | None = None
+    weak_auth_methods: list[str] | None = None  # méthodes SMS / appel vocal activées ; None = non lisible
+    device_join_all_users: bool | None = None  # tous les utilisateurs peuvent joindre des appareils
+    device_join_mfa_required: bool | None = None  # MFA exigée pour joindre ou inscrire un appareil
     users: list[EntraUser] = []
     role_assignments: list[EntraRoleAssignment] = []
     apps: list[EntraApp] = []

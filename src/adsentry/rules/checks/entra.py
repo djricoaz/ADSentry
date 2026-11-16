@@ -162,7 +162,8 @@ def connect_version(snap: Snapshot, params: dict) -> CheckResult:
 
 @check("entra_ca")
 def conditional_access(snap: Snapshot, params: dict) -> CheckResult:
-    """params.what : no_policies | mfa_admins | mfa_all | legacy_auth | report_only"""
+    """params.what : no_policies | mfa_admins | mfa_all | legacy_auth | report_only
+    | phishing_resistant_admins | device_code | risk"""
     t = _t(snap)
     if t.ca_policies is None:
         return CheckResult()
@@ -177,6 +178,27 @@ def conditional_access(snap: Snapshot, params: dict) -> CheckResult:
         return CheckResult() if enabled or covered_by_defaults else CheckResult(affected=[t.name])
     if what == "report_only":
         return CheckResult(affected=[p.name for p in t.ca_policies if p.state == "enabledForReportingButNotEnforced"])
+    # Les valeurs de sécurité par défaut n'offrent ni force d'authentification, ni blocage des flux, ni risque
+    if what == "phishing_resistant_admins":
+        ok = any(
+            p.authentication_strength == c.ENTRA_AUTH_STRENGTH_PHISHING_RESISTANT
+            and ("All" in p.include_users or c.ENTRA_ROLE_GLOBAL_ADMIN in p.include_roles)
+            for p in enabled
+        )
+        return CheckResult() if ok else CheckResult(affected=["rôles d'administration"])
+    if what == "device_code":
+        ok = any(
+            "block" in p.grant_controls and "deviceCodeFlow" in p.auth_flows and "All" in p.include_users
+            for p in enabled
+        )
+        return CheckResult() if ok else CheckResult(affected=["flux d'authentification par code d'appareil"])
+    if what == "risk":
+        if not t.pim_available:  # les conditions de risque exigent la licence P2 (même indicateur que PIM)
+            return CheckResult()
+        has_user = any(p.user_risk_levels and "All" in p.include_users for p in enabled)
+        has_signin = any(p.sign_in_risk_levels and "All" in p.include_users for p in enabled)
+        missing = [x for x, ok in (("risque utilisateur", has_user), ("risque de connexion", has_signin)) if not ok]
+        return CheckResult(affected=missing)
     if covered_by_defaults:
         return CheckResult()
     if what == "mfa_admins":
@@ -197,6 +219,25 @@ def conditional_access(snap: Snapshot, params: dict) -> CheckResult:
         )
         return CheckResult() if ok else CheckResult(affected=["authentification héritée"])
     raise ValueError(what)
+
+
+@check("entra_weak_auth_methods")
+def weak_auth_methods(snap: Snapshot, params: dict) -> CheckResult:
+    t = _t(snap)
+    labels = {"sms": "SMS", "voice": "Appel vocal"}
+    return CheckResult(affected=[labels.get(m, m) for m in t.weak_auth_methods or []])
+
+
+@check("entra_device_join")
+def device_join(snap: Snapshot, params: dict) -> CheckResult:
+    t = _t(snap)
+    if t.device_join_all_users is None or t.device_join_mfa_required is None:
+        return CheckResult()
+    return (
+        CheckResult(affected=["jonction Entra"])
+        if t.device_join_all_users and not t.device_join_mfa_required
+        else CheckResult()
+    )
 
 
 # ----------------------------------------------------------------------------- applications
