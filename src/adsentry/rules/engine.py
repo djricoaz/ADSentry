@@ -75,6 +75,8 @@ def analyze(snapshot: Snapshot, rules: list[Rule] | None = None) -> ScanResult:
     scores, global_score = compute_scores(findings)
     return ScanResult(
         domain=target_name(snapshot),
+        ad_domain=snapshot.domain.name if snapshot.domain else None,
+        tenant_id=snapshot.entra.tenant_id if snapshot.entra else None,
         collected_at=snapshot.collected_at,
         analyzed_at=datetime.now(UTC),
         findings=findings,

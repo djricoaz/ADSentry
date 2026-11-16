@@ -28,6 +28,7 @@ class JobKind(StrEnum):
     ai = "ai"
     ai_setup = "ai_setup"
     ai_index = "ai_index"
+    ai_script = "ai_script"
 
 
 class JobStatus(StrEnum):

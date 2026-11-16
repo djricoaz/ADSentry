@@ -238,7 +238,7 @@ function findingsTable(findings, { onOpen = openFinding, showCategory = true } =
 const bySeverity = (a, b) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b.severity) || b.points - a.points;
 
 // ---------------------------------------------------------------------------- panneau de détail
-async function openFinding(f) {
+async function openFinding(f, scanId = state.scanId) {
   const rules = await getRules();
   const rule = rules.find((r) => r.id === f.rule_id) || {};
   const ref = await getMitre();
@@ -255,6 +255,7 @@ async function openFinding(f) {
     el("h3", {}, "Objets concernés"),
     el("ul", { class: "objects" }, f.affected.slice(0, max).map((o) => el("li", {}, o))),
     f.affected.length > max ? el("p", { class: "muted" }, `et ${f.affected.length - max} autres`) : null,
+    scanId ? [el("h3", {}, "Script de correction PowerShell"), scriptBox(scanId, f.rule_id)] : null,
     f.mitre.length ? [el("h3", {}, "MITRE ATT&CK"), el("ul", { class: "objects" }, f.mitre.map((m) =>
       el("li", {}, el("a", { href: `https://attack.mitre.org/techniques/${m.technique.replace(".", "/")}/`, target: "_blank", rel: "noopener" },
         m.technique), " ", ref?.techniques[m.technique]?.name || "")))] : null,
@@ -264,6 +265,59 @@ async function openFinding(f) {
   $("drawer").classList.add("open");
   $("drawer").setAttribute("aria-hidden", "false");
   $("drawer-close").focus();
+}
+// ---------------------------------------------------------------------------- scripts de correction
+const SCRIPT_KINDS = { fix: ["Correction", "lvl-low"], partial: ["Atténuation", "lvl-medium"], guide: ["Guide sans modification", ""], ai: ["Brouillon IA — à relire", "lvl-high"] };
+async function copyText(text, pre) {
+  try { await navigator.clipboard.writeText(text); }
+  catch { // contexte non sécurisé (HTTP) : sélection puis copie
+    const range = document.createRange(); range.selectNodeContents(pre);
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range); document.execCommand("copy"); sel.removeAllRanges();
+  }
+  toast("Script copié");
+}
+function scriptBox(scanId, ruleId) {
+  const box = el("div", { class: "script-box" }, el("p", { class: "muted small" }, "Préparation du script…"));
+  const url = `/scans/${encodeURIComponent(scanId)}/scripts/${encodeURIComponent(ruleId)}`;
+  let s, variant = "template";
+  const render = () => {
+    const cur = variant === "ai" ? s.ai_draft : s;
+    const [label, cls] = SCRIPT_KINDS[cur.kind];
+    const pre = el("pre", { class: "code" }, el("code", {}, cur.script));
+    const tabs = s.ai_draft ? el("div", { class: "tabs" }, [["template", s.kind === "guide" ? "Guide" : "Modèle vérifié"], ["ai", "Brouillon de l'IA"]]
+      .map(([k, l]) => el("button", { type: "button", class: variant === k ? "active" : null, onclick: () => { variant = k; render(); } }, l))) : null;
+    const aiBtn = state.user?.role === "admin" && s.kind !== "fix"
+      ? el("button", { class: "btn btn-link", type: "button" }, s.ai_draft ? "Redemander à l'IA" : "Proposer un script avec l'IA") : null;
+    aiBtn?.addEventListener("click", () => busy(aiBtn, "Envoi…", async () => {
+      try {
+        const job = await api(`${url}/ai`, { method: "POST" });
+        toast("L'IA locale rédige un brouillon (1 à 5 minutes) ; il apparaîtra ici.");
+        pollJobs();
+        for (let i = 0; i < 200; i++) {
+          await new Promise((r) => setTimeout(r, 3000));
+          const j = await api(`/jobs/${job.id}`);
+          if (!j.active) {
+            if (j.status === "failed") { toast(`Brouillon refusé : ${j.error}`); return; }
+            s = await api(url); variant = "ai";
+            if (box.isConnected) render();
+            return;
+          }
+        }
+      } catch (e) { toast(e.message); }
+    }));
+    box.replaceChildren(...[
+      el("div", { class: "kv" }, el("span", { class: `pill ${cls}` }, label), el("span", { class: "small" }, cur.summary)),
+      tabs,
+      cur.warnings?.length ? el("div", { class: "note small" }, cur.warnings.join(" ")) : null,
+      el("p", { class: "small muted" }, "S'exécute en simulation par défaut : ", el("code", {}, `.\\${cur.filename}`), ", puis ", el("code", {}, `.\\${cur.filename} -Apply`),
+        " après relecture. Il vérifie le domaine, sauvegarde l'état avant modification et journalise. ADSentry ne l'exécute jamais."),
+      el("div", { class: "actions" },
+        el("a", { class: "btn btn-primary", href: `/api${url}?download=1&variant=${variant}`, download: cur.filename }, "Télécharger le script"),
+        el("button", { class: "btn btn-secondary", type: "button", onclick: () => copyText(cur.script, pre) }, "Copier"), aiBtn),
+      pre].filter(Boolean));
+  };
+  api(url).then((data) => { s = data; render(); }).catch((e) => box.replaceChildren(el("p", { class: "note small" }, e.message)));
+  return box;
 }
 function closeDrawer() {
   $("drawer").classList.remove("open");
@@ -490,7 +544,7 @@ async function viewDashboard() {
       el("div", { class: "prio-head" }, sev(f.severity), el("strong", {}, f.title)),
       el("p", { class: "muted" }, f.description.split(/(?<=\.)\s/)[0]),
       el("span", { class: "small muted" }, `${plural(f.affected.length, "objet concerné", "objets concernés")} · ${CATS[f.category]} · ${SEV_HELP[f.severity].split(". ")[1] || ""}`)),
-    el("button", { class: "btn btn-secondary", onclick: () => openFinding(f) }, "Comment corriger")))) :
+    el("button", { class: "btn btn-secondary", onclick: () => openFinding(f, k.last_scan_id) }, "Comment corriger")))) :
     emptyState("Rien à corriger en priorité", "Aucun constat de sévérité faible ou supérieure dans le dernier scan.");
 
   // Suivi des corrections (onglets, recherche, tri)
@@ -518,7 +572,7 @@ async function viewDashboard() {
         el("th", { class: "hide-sm" }, "Détecté le"), el("th", { class: "num" }, tab === "fixed" ? "Corrigé le" : "Ouvert depuis"))),
       el("tbody", {}, list.slice(0, limit).map((x) => {
         const f = current.get(x.rule_id);
-        return el("tr", { class: f ? "clickable" : null, tabindex: f ? "0" : null, onclick: f ? () => openFinding(f) : null, onkeydown: f ? (e) => { if (e.key === "Enter") openFinding(f); } : null },
+        return el("tr", { class: f ? "clickable" : null, tabindex: f ? "0" : null, onclick: f ? () => openFinding(f, k.last_scan_id) : null, onkeydown: f ? (e) => { if (e.key === "Enter") openFinding(f, k.last_scan_id); } : null },
           el("td", {}, sev(x.severity)),
           el("td", {}, x.title, x.reopened ? el("span", { class: "pill lvl-high", title: "Corrigé puis réapparu" }, `réapparu ${x.reopened}×`) : null, el("div", { class: "rule-id small" }, x.rule_id)),
           el("td", { class: "num hide-sm" }, x.objects ?? "—"),
@@ -821,7 +875,8 @@ function viewFindings() {
   render();
   return [
     el("p", { class: "muted intro" }, `Rapport ${s.domain} du ${fmtDate(s.collected_at)}. Cliquez sur un constat pour lire le risque, la correction recommandée et les objets concernés.`),
-    el("section", { class: "section" }, el("div", { class: "toolbar" }, search, cat, sv, reset, count, csv), holder),
+    el("section", { class: "section" }, el("div", { class: "toolbar" }, search, cat, sv, reset, count, csv,
+      el("a", { class: "btn btn-secondary", href: `/api/scans/${encodeURIComponent(state.scanId)}/scripts.zip`, download: "" }, "Scripts PowerShell (.zip)")), holder),
   ];
 }
 

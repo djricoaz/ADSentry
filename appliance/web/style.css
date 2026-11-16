@@ -665,3 +665,12 @@ textarea.mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
 .ai-answer { margin-top: 1rem; padding: .9rem 1rem; background: #f6f8fb; border: 1px solid var(--rule); border-radius: var(--radius); }
 .ai-text { white-space: pre-wrap; line-height: 1.6; }
 .prose .inline-fields { display: inline-flex; margin-top: .4rem; }
+
+/* ------------------------------------------------------------------ scripts de correction */
+.script-box { border: 1px solid var(--rule); border-radius: var(--radius); padding: .7rem .8rem; background: #fbfcfd; }
+.script-box .tabs { margin: .6rem 0 .2rem; }
+.script-box .actions { margin-top: .5rem; }
+pre.code { margin: .7rem 0 0; max-height: 360px; overflow: auto; background: #1f2b3a; color: #e7edf5; border-radius: var(--radius);
+  padding: .7rem .8rem; font: .76rem/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: pre; }
+.drawer-body .kv .small { color: var(--ink-2); }
+pre.code code { background: none; color: inherit; padding: 0; border: 0; font: inherit; }
