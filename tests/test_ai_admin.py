@@ -106,9 +106,13 @@ def env(tmp_path, monkeypatch):
     return e
 
 
-def _run_next_job(e):
+def _run_next_job(e, skip=("notify",)):
+    """Exécute les tâches en file ; renvoie la première qui n'est pas une tâche de notification."""
     store = e.jobs.JobStore()
-    return e.runner.execute_job(store.claim_next(), store)
+    while True:
+        job = e.runner.execute_job(store.claim_next(), store)
+        if job.kind not in skip:
+            return job
 
 
 def test_modelfile_matches_console_model():

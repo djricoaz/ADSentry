@@ -222,6 +222,13 @@ def test_ai_guard_sees_code_hidden_in_strings(vuln_result):
 # ----------------------------------------------------------------------------- API et brouillons IA
 
 
+def _run_until(env, store, skip=("notify",)):
+    while True:
+        job = env["runner"].execute_job(store.claim_next(), store)
+        if job.kind not in skip:
+            return job
+
+
 @pytest.fixture()
 def api_env(tmp_path, monkeypatch):
     pytest.importorskip("multipart")
@@ -306,7 +313,7 @@ def test_ai_draft_job(api_env):
     )
     replies.append(good)
     assert a.post(f"/api/scans/{scan}/scripts/PKI-ESC1/ai").json()["kind"] == "ai_script"
-    job = api_env["runner"].execute_job(store.claim_next(), store)
+    job = _run_until(api_env, store)
     assert job.status == "succeeded", job.error
     draft = a.get(f"/api/scans/{scan}/scripts/PKI-ESC1").json()["ai_draft"]
     assert draft["kind"] == "ai" and "msPKI-Certificate-Name-Flag" in draft["script"]
@@ -317,7 +324,7 @@ def test_ai_draft_job(api_env):
     bad = "```powershell\nRemove-ADUser -Identity admin\n```"
     replies.extend([bad, bad])
     a.post(f"/api/scans/{scan}/scripts/PKI-ESC2/ai")
-    job = api_env["runner"].execute_job(store.claim_next(), store)
+    job = _run_until(api_env, store)
     assert job.status == "failed" and "interdite" in job.error
     assert a.get(f"/api/scans/{scan}/scripts/PKI-ESC2").json()["ai_draft"] is None
 
@@ -327,5 +334,5 @@ def test_ai_draft_without_code_block_is_refused(api_env):
     store = api_env["jobs"].JobStore()
     replies.extend(["Voici ce qu'il faut faire : retirer le drapeau.", "Toujours pas de code."])
     a.post(f"/api/scans/{scan}/scripts/PKI-ESC3/ai")
-    job = api_env["runner"].execute_job(store.claim_next(), store)
+    job = _run_until(api_env, store)
     assert job.status == "failed" and "bloc de code" in job.error
