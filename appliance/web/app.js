@@ -33,6 +33,7 @@ const VIEWS = {
   entra: { title: "Entra ID", group: "scan" },
   mitre: { title: "MITRE ATT&CK", group: "scan" },
   report: { title: "Synthèse", group: "scan" },
+  topology: { title: "Topologie", group: "scan" },
   scans: { title: "Historique des scans", group: "ref" },
   rules: { title: "Catalogue de règles", group: "ref" },
   help: { title: "Guide de lecture", group: "ref" },
@@ -1488,6 +1489,380 @@ async function logout() {
   showAuth("login");
 }
 
+// ---------------------------------------------------------------------------- vue : topologie
+const TOPO_TYPES = { user: "Utilisateur", group: "Groupe", computer: "Ordinateur", domain: "Domaine", object: "Objet" };
+const TOPO_FAMILIES = { membership: "Appartenance", acl: "Droits (ACL)", delegation: "Délégation", sidhistory: "Historique SID" };
+const TOPO_FLAGS = {
+  spn: ["SPN", "Compte de service avec SPN : son mot de passe peut être attaqué hors ligne (Kerberoasting)."],
+  asrep: ["Sans pré-auth.", "Pré-authentification Kerberos désactivée : le mot de passe peut être attaqué hors ligne."],
+  unconstrained: ["Délégation", "Délégation non contrainte : les tickets des comptes qui s'y connectent sont réutilisables."],
+  sid_history: ["Hist. SID", "Historique SID renseigné : le compte hérite des droits d'un autre SID."],
+  pwd_never_expires: ["Mdp permanent", "Compte à privilèges dont le mot de passe n'expire jamais."],
+  rbcd: ["RBCD", "Délégation basée sur la ressource configurée sur cet ordinateur."],
+  dc: ["DC", "Contrôleur de domaine."],
+  disabled: ["Désactivé", "Compte désactivé."],
+};
+const topoState = { tab: "paths", families: new Set(Object.keys(TOPO_FAMILIES)), onlyPaths: false, simFrom: "" };
+
+async function viewTopology(params) {
+  const s = state.scan;
+  if (!s) return noScan();
+  let t;
+  try { t = await api(`/scans/${state.scanId}/topology`); }
+  catch (e) { return el("section", { class: "section" }, emptyState("Topologie indisponible", e.message)); }
+  if (params?.get("tab")) topoState.tab = params.get("tab");
+  const tabs = el("div", { class: "tabs topo-tabs", role: "tablist" }, [["paths", "Comptes et groupes : chemins vers le Tier 0"], ["trusts", "Domaines et forêts : approbations"]]
+    .map(([k, l]) => el("button", { type: "button", role: "tab", class: topoState.tab === k ? "active" : null, "aria-selected": String(topoState.tab === k),
+      onclick: () => { topoState.tab = k; softRender(); } }, l)));
+  return [el("div", { class: "topo-head" }, tabs, el("span", { class: "muted small" }, `Rapport ${s.domain} du ${fmtDate(s.collected_at)}`)),
+    topoState.tab === "trusts" ? trustView(t.trust_map) : pathsView(t.graph, s)].flat(Infinity);
+}
+
+// --- graphe des chemins ----------------------------------------------------------
+function pathsView(g, scan) {
+  const st = g.stats;
+  const kpi = (label, value, cls, hint) => el("div", { class: `topo-kpi ${cls || ""}` }, el("span", { class: "k" }, label, help(hint)), el("strong", {}, value));
+  const band = el("section", { class: "section topo-kpis" },
+    kpi("Comptes et groupes Tier 0", st.tier0, "", "Administrateurs du domaine, contrôleurs de domaine et objets qui en contrôlent la sécurité."),
+    kpi("Objets pouvant atteindre le Tier 0", st.exposed, st.exposed ? "warn" : "ok", "Comptes, groupes et ordinateurs non administrateurs qui ont un chemin (appartenance, droit, délégation) jusqu'au Tier 0."),
+    kpi("Chemins ouverts à tous les utilisateurs", st.low_priv_paths, st.low_priv_paths ? "bad" : "ok", "Chemins qui partent de « Tout le monde », « Utilisateurs authentifiés » ou « Utilisateurs du domaine » : n'importe quel compte peut devenir administrateur."),
+    kpi("Comptes à risque", st.risky_accounts, st.risky_accounts ? "warn" : "ok", "Comptes avec SPN, sans pré-authentification Kerberos, avec délégation non contrainte ou historique SID."));
+  if (!g.nodes.length) return [band, el("section", { class: "section" }, emptyState("Aucune relation à afficher", "Aucun groupe Tier 0 ni compte à risque n'a été trouvé dans les données collectées."))];
+
+  const byId = new Map(g.nodes.map((n) => [n.id, n]));
+  const famBoxes = el("div", { class: "topo-filters" }, Object.entries(TOPO_FAMILIES).map(([k, l]) => {
+    const box = el("input", { type: "checkbox", checked: topoState.families.has(k) });
+    box.addEventListener("change", () => { box.checked ? topoState.families.add(k) : topoState.families.delete(k); draw(); });
+    return el("label", { class: `chip fam-${k}` }, box, el("i"), l);
+  }));
+  const only = el("input", { type: "checkbox", checked: topoState.onlyPaths });
+  only.addEventListener("change", () => { topoState.onlyPaths = only.checked; draw(); });
+  const search = el("input", { type: "search", placeholder: "Trouver un compte ou un groupe", "aria-label": "Rechercher dans le graphe", list: "topo-names" });
+  const names = el("datalist", { id: "topo-names" }, g.nodes.map((n) => el("option", { value: n.label })));
+  search.addEventListener("change", () => {
+    const n = g.nodes.find((x) => x.label.toLowerCase() === search.value.trim().toLowerCase());
+    if (n) { focusNode(n.id); openNode(n); } else if (search.value) toast("Aucun objet de ce nom dans le graphe");
+  });
+  const resetBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Recentrer");
+  const toolbar = el("div", { class: "toolbar topo-toolbar" }, famBoxes,
+    el("label", { class: "check inline" }, only, el("span", {}, "Seulement les chemins vers le Tier 0")), search, names, resetBtn);
+
+  const svgEl = svg("svg", { class: "topo-svg", role: "img", "aria-label": "Graphe des relations vers le Tier 0" });
+  const wrap = el("div", { class: "topo-canvas" }, svgEl,
+    el("div", { class: "topo-legend" },
+      el("span", {}, el("i", { class: "lg tier0" }), "Tier 0"), el("span", {}, el("i", { class: "lg exposed" }), "Peut atteindre le Tier 0"),
+      el("span", {}, el("i", { class: "lg lowpriv" }), "Tous les utilisateurs"), el("span", {}, el("i", { class: "lg risky" }), "Compte à risque"),
+      el("span", { class: "muted" }, "Molette : zoom · glisser : déplacer · clic : détails")));
+
+  // Liste des chemins
+  const pathList = el("ol", { class: "topo-paths" }, g.paths.map((p, i) => {
+    const start = byId.get(p.nodes[0]);
+    return el("li", { tabindex: "0", class: start?.low_priv ? "lowpriv" : null,
+      onclick: () => highlightPath(p), onkeydown: (e) => { if (e.key === "Enter") highlightPath(p); } },
+    el("div", { class: "path-head" }, el("strong", {}, start?.label || "?"), el("span", { class: "muted small" }, `${p.length} étape${p.length > 1 ? "s" : ""} → ${p.target}`)),
+    el("div", { class: "path-steps small" }, p.kinds.map((k, j) => [el("span", { class: "step-kind" }, g.edge_labels[k] || k), " ", byId.get(p.nodes[j + 1])?.label, j < p.kinds.length - 1 ? " · " : ""])),
+    start?.low_priv ? el("span", { class: "pill lvl-critical" }, "Ouvert à tous") : null);
+  }));
+  const side = el("section", { class: "section topo-side" },
+    el("div", { class: "section-head" }, el("div", {}, el("h2", {}, "Chemins vers le Tier 0"), el("p", {}, "Les plus courts ; cliquez pour les surligner"))),
+    g.paths.length ? pathList : el("p", { class: "muted section-body" }, "Aucun chemin d'un compte non administrateur vers le Tier 0."),
+    g.truncated ? el("p", { class: "note small section-body" }, "Graphe limité aux 400 objets les plus proches du Tier 0.") : null);
+
+  // --- disposition en colonnes : distance au Tier 0 (0 à droite) ; comptes isolés à gauche
+  const COLW = 230, ROWH = 38, PAD = 60;
+  let layout = new Map(), viewBox = null, highlighted = null;
+  function visible() {
+    const keepNodes = new Set(g.nodes.filter((n) => !topoState.onlyPaths || n.distance !== null).map((n) => n.id));
+    const es = g.edges.filter((e) => topoState.families.has(e.family) && keepNodes.has(e.source) && keepNodes.has(e.target));
+    return { nodes: g.nodes.filter((n) => keepNodes.has(n.id)), edges: es };
+  }
+  function computeLayout(nodes) {
+    const maxD = Math.max(0, ...nodes.map((n) => n.distance ?? 0));
+    const cols = new Map();
+    for (const n of nodes) {
+      const col = n.distance === null ? maxD + 1 : n.distance;
+      if (!cols.has(col)) cols.set(col, []);
+      cols.get(col).push(n);
+    }
+    const order = { domain: 0, object: 1, group: 2, user: 3, computer: 4 };
+    layout = new Map();
+    let height = 0;
+    for (const [col, list] of cols) {
+      list.sort((a, b) => (b.low_priv - a.low_priv) || (order[a.type] - order[b.type]) || a.label.localeCompare(b.label));
+      list.forEach((n, i) => layout.set(n.id, { x: PAD + (maxD + 1 - col) * COLW, y: PAD + i * ROWH }));
+      height = Math.max(height, PAD * 2 + list.length * ROWH);
+    }
+    return { width: PAD * 2 + (maxD + 2) * COLW, height, maxD, hasIsolated: cols.has(maxD + 1) };
+  }
+  function shape(n) {
+    const cls = ["node", `t-${n.type}`, n.tier0 || n.privileged ? "tier0" : "", n.exposed ? "exposed" : "", n.low_priv ? "lowpriv" : "",
+      n.flags.some((f) => ["spn", "asrep", "unconstrained", "sid_history"].includes(f)) ? "risky" : "", n.flags.includes("disabled") ? "disabled" : ""].join(" ");
+    const p = layout.get(n.id);
+    const glyph = n.type === "group" ? svg("rect", { x: -11, y: -11, width: 22, height: 22, rx: 5 })
+      : n.type === "computer" ? svg("rect", { x: -12, y: -8, width: 24, height: 16, rx: 2 })
+        : n.type === "domain" || n.type === "object" ? svg("path", { d: "M0,-13 L13,0 L0,13 L-13,0 Z" }) : svg("circle", { r: 11 });
+    const letter = { user: "U", group: "G", computer: "C", domain: "D", object: "O" }[n.type];
+    const g1 = svg("g", { class: cls, transform: `translate(${p.x},${p.y})`, tabindex: "0", "data-id": n.id },
+      glyph, svg("text", { class: "glyph", "text-anchor": "middle", y: 4 }, letter),
+      svg("text", { class: "label", x: 18, y: 4 }, n.label.length > 26 ? `${n.label.slice(0, 25)}…` : n.label),
+      n.flags.filter((f) => TOPO_FLAGS[f] && !["dc", "disabled"].includes(f)).length ? svg("circle", { class: "flag-dot", cx: 9, cy: -9, r: 4 }) : null);
+    g1.addEventListener("mouseenter", () => { if (!highlighted) hover(n.id); });
+    g1.addEventListener("mouseleave", () => { if (!highlighted) hover(null); });
+    g1.addEventListener("click", (e) => { e.stopPropagation(); openNode(n); });
+    g1.addEventListener("keydown", (e) => { if (e.key === "Enter") openNode(n); });
+    return g1;
+  }
+  function edgePath(e) {
+    const a = layout.get(e.source), b = layout.get(e.target);
+    const x1 = a.x + 14, x2 = b.x - 16;
+    const mx = (x1 + x2) / 2;
+    const same = Math.abs(a.x - b.x) < 1;
+    const d = same ? `M${a.x},${a.y + 12} C${a.x + 70},${a.y + 12} ${b.x + 70},${b.y - 12} ${b.x},${b.y - 12}` : `M${x1},${a.y} C${mx},${a.y} ${mx},${b.y} ${x2},${b.y}`;
+    const p = svg("path", { class: `edge fam-${e.family}${e.to_tier0 ? " main" : ""}`, d, "marker-end": `url(#arrow-${e.family})`, "data-s": e.source, "data-t": e.target });
+    p.append(svg("title", {}, `${byId.get(e.source)?.label} — ${g.edge_labels[e.kind] || e.kind} → ${byId.get(e.target)?.label}`));
+    return p;
+  }
+  function draw() {
+    const { nodes, edges } = visible();
+    const dims = computeLayout(nodes);
+    const defs = svg("defs", {}, Object.keys(TOPO_FAMILIES).map((f) => svg("marker", { id: `arrow-${f}`, viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 9, markerHeight: 9, markerUnits: "userSpaceOnUse", orient: "auto-start-reverse" },
+      svg("path", { class: `arrowhead fam-${f}`, d: "M0,0 L10,5 L0,10 z" }))));
+    const headers = svg("g", { class: "col-heads" }, Array.from({ length: dims.maxD + 2 }, (_, i) => {
+      const col = dims.maxD + 1 - i;
+      if (col === dims.maxD + 1 && !dims.hasIsolated) return null;
+      const label = col === 0 ? "Tier 0" : col === dims.maxD + 1 ? "Comptes à risque (sans chemin)" : `À ${col} étape${col > 1 ? "s" : ""} du Tier 0`;
+      return svg("text", { x: PAD + i * COLW - 12, y: 24 }, label);
+    }));
+    svgEl.replaceChildren(defs, headers, svg("g", { class: "edges" }, edges.map(edgePath)), svg("g", { class: "nodes" }, nodes.map(shape)));
+    viewBox = { x: 0, y: 0, w: dims.width, h: Math.max(dims.height, 420) };
+    applyView();
+    highlighted = null;
+  }
+  function applyView() { svgEl.setAttribute("viewBox", `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`); }
+  function hover(id) {
+    svgEl.classList.toggle("dimmed", !!id);
+    svgEl.querySelectorAll(".on").forEach((x) => x.classList.remove("on"));
+    if (!id) return;
+    svgEl.querySelector(`.node[data-id="${CSS.escape(id)}"]`)?.classList.add("on");
+    svgEl.querySelectorAll(".edge").forEach((p) => {
+      if (p.dataset.s === id || p.dataset.t === id) {
+        p.classList.add("on");
+        svgEl.querySelector(`.node[data-id="${CSS.escape(p.dataset.s === id ? p.dataset.t : p.dataset.s)}"]`)?.classList.add("on");
+      }
+    });
+  }
+  function highlightPath(p) {
+    pathList.querySelectorAll("li").forEach((li, i) => li.classList.toggle("active", g.paths[i] === p));
+    highlighted = p;
+    svgEl.classList.add("dimmed");
+    svgEl.querySelectorAll(".on").forEach((x) => x.classList.remove("on"));
+    p.nodes.forEach((id, i) => {
+      svgEl.querySelector(`.node[data-id="${CSS.escape(id)}"]`)?.classList.add("on");
+      if (i) svgEl.querySelector(`.edge[data-s="${CSS.escape(p.nodes[i - 1])}"][data-t="${CSS.escape(id)}"]`)?.classList.add("on");
+    });
+    const pts = p.nodes.map((id) => layout.get(id)).filter(Boolean);
+    if (pts.length) {
+      const xs = pts.map((q) => q.x), ys = pts.map((q) => q.y);
+      const w = Math.max(...xs) - Math.min(...xs) + 400, h = Math.max(...ys) - Math.min(...ys) + 200;
+      viewBox = { x: Math.min(...xs) - 150, y: Math.min(...ys) - 100, w: Math.max(w, 600), h: Math.max(h, 320) };
+      applyView();
+    }
+  }
+  function focusNode(id) {
+    const p = layout.get(id);
+    if (!p) return;
+    viewBox = { x: p.x - 400, y: p.y - 220, w: 900, h: 480 };
+    applyView();
+    highlighted = null;
+    hover(id);
+  }
+  function openNode(n) {
+    const out = g.edges.filter((e) => e.source === n.id), inc = g.edges.filter((e) => e.target === n.id);
+    const chain = [];
+    let cur = n.id;
+    for (let guard = 0; guard < 20; guard++) {
+      const e = g.edges.find((x) => x.source === cur && x.to_tier0);
+      if (!e) break;
+      chain.push(e);
+      cur = e.target;
+    }
+    const related = (scan.findings || []).filter((f) => f.affected.some((a) => a.toLowerCase() === n.label.toLowerCase() || a.toLowerCase().startsWith(`${n.label.toLowerCase()} `)));
+    const rel = (list, dir) => el("ul", { class: "plain small" }, list.slice(0, 40).map((e) => {
+      const other = byId.get(dir === "out" ? e.target : e.source);
+      return el("li", {}, el("span", { class: `step-kind fam-${e.family}` }, g.edge_labels[e.kind] || e.kind), " ",
+        el("a", { href: "#", onclick: (ev) => { ev.preventDefault(); focusNode(other.id); openNode(other); } }, other?.label || "?"));
+    }));
+    openPanel(`${TOPO_TYPES[n.type]}${n.tier0 || n.privileged ? " · Tier 0" : ""}`, n.label, el("div", {},
+      el("div", { class: "kv" },
+        n.tier0 || n.privileged ? el("span", { class: "pill lvl-critical" }, "Tier 0") : n.exposed ? el("span", { class: "pill lvl-high" }, `À ${n.distance} étape${n.distance > 1 ? "s" : ""} du Tier 0`) : el("span", { class: "pill lvl-low" }, "Pas de chemin vers le Tier 0"),
+        n.low_priv ? el("span", { class: "pill lvl-critical" }, "Inclut tous les utilisateurs") : null,
+        n.members !== undefined ? el("span", {}, `${n.members} membre(s) direct(s)`) : null),
+      n.flags.filter((f) => TOPO_FLAGS[f]).length ? [el("h3", {}, "Points d'attention"), el("ul", { class: "plain" }, n.flags.filter((f) => TOPO_FLAGS[f]).map((f) => el("li", {}, el("strong", {}, TOPO_FLAGS[f][0]), " : ", TOPO_FLAGS[f][1])))] : null,
+      chain.length ? [el("h3", {}, "Chemin le plus court vers le Tier 0"), el("ol", { class: "plain small chain" }, chain.map((e) => el("li", {}, byId.get(e.source)?.label, " — ", el("span", { class: `step-kind fam-${e.family}` }, g.edge_labels[e.kind] || e.kind), " → ", el("strong", {}, byId.get(e.target)?.label))))] : null,
+      out.length ? [el("h3", {}, `Peut agir sur (${out.length})`), rel(out, "out")] : null,
+      inc.length ? [el("h3", {}, `Contrôlé par (${inc.length})`), rel(inc, "in")] : null,
+      related.length ? [el("h3", {}, "Constats concernant cet objet"), el("ul", { class: "plain" }, related.map((f) => el("li", {}, sev(f.severity), " ", el("a", { href: "#", onclick: (ev) => { ev.preventDefault(); openFinding(f); } }, f.title))))] : null));
+  }
+  // zoom et déplacement
+  svgEl.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const r = svgEl.getBoundingClientRect();
+    const k = e.deltaY > 0 ? 1.15 : 1 / 1.15;
+    const mx = viewBox.x + ((e.clientX - r.left) / r.width) * viewBox.w, my = viewBox.y + ((e.clientY - r.top) / r.height) * viewBox.h;
+    viewBox = { x: mx - (mx - viewBox.x) * k, y: my - (my - viewBox.y) * k, w: viewBox.w * k, h: viewBox.h * k };
+    applyView();
+  }, { passive: false });
+  let drag = null;
+  svgEl.addEventListener("pointerdown", (e) => { if (e.target.closest(".node")) return; drag = { x: e.clientX, y: e.clientY, vb: { ...viewBox } }; svgEl.setPointerCapture(e.pointerId); });
+  svgEl.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const r = svgEl.getBoundingClientRect();
+    viewBox = { ...drag.vb, x: drag.vb.x - ((e.clientX - drag.x) / r.width) * drag.vb.w, y: drag.vb.y - ((e.clientY - drag.y) / r.height) * drag.vb.h };
+    applyView();
+  });
+  svgEl.addEventListener("pointerup", () => { drag = null; });
+  svgEl.addEventListener("click", (e) => {
+    if (e.target.closest(".node")) return;
+    highlighted = null; hover(null);
+    pathList.querySelectorAll("li.active").forEach((li) => li.classList.remove("active"));
+  });
+  resetBtn.addEventListener("click", draw);
+  draw();
+  return [band, el("div", { class: "topo-layout" }, el("section", { class: "section topo-main" }, toolbar, wrap), side)];
+}
+
+// --- approbations ------------------------------------------------------------------
+function trustReach(tm, from) {
+  // Accès possibles en partant de comptes compromis dans « from » (approximation, vue du domaine audité)
+  const reach = new Map([[from, { hops: 0, via: null, elevated: false }]]);
+  const queue = [from];
+  while (queue.length) {
+    const cur = queue.shift();
+    for (const t of tm.trusts) {
+      for (const a of t.access) {
+        if (a.from !== cur || reach.has(a.to)) continue;
+        const prev = reach.get(cur);
+        if (prev.hops > 0 && prev.via && prev.via.transitive === false) continue; // pas de rebond après une approbation non transitive
+        reach.set(a.to, { hops: prev.hops + 1, via: t, from: cur, elevated: prev.elevated || t.sid_filtering === false });
+        queue.push(a.to);
+      }
+    }
+  }
+  return reach;
+}
+function trustView(tm) {
+  if (!tm.domains.length) return el("section", { class: "section" }, emptyState("Aucune donnée d'approbation", "Le domaine audité n'a pas pu être identifié."));
+  const W = 820, boxW = 190, boxH = 46;
+  const forests = tm.forests;
+  const pos = new Map();
+  const groups = [];
+  const current = forests.find((f) => f.domains.includes(tm.current));
+  const others = forests.filter((f) => f !== current);
+  // forêt du domaine audité à gauche, les autres en colonne à droite
+  const placeForest = (f, x, y) => {
+    const doms = [...f.domains].sort((a, b) => (b === tm.current) - (a === tm.current) || (b === f.name) - (a === f.name) || a.localeCompare(b));
+    const h = 54 + doms.length * (boxH + 18);
+    groups.push({ f, x, y, w: boxW + 56, h });
+    doms.forEach((d, i) => pos.set(d, { x: x + 40, y: y + 40 + i * (boxH + 18) }));
+    return h;
+  };
+  placeForest(current, 30, 40);
+  let y = 40;
+  for (const f of others) y += placeForest(f, W - boxW - 86, y) + 24;
+  const H = Math.max(y, ...groups.map((g) => g.y + g.h)) + 40;
+  const reach = topoState.simFrom ? trustReach(tm, topoState.simFrom) : null;
+  const svgEl = svg("svg", { class: "trust-svg", viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Carte des approbations" },
+    svg("defs", {}, ["none", "low", "medium", "high"].map((s) => svg("marker", { id: `tarrow-${s}`, viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 12, markerHeight: 12, markerUnits: "userSpaceOnUse", orient: "auto-start-reverse" },
+      svg("path", { class: `tarrow sev-${s}`, d: "M0,0 L10,5 L0,10 z" })))));
+  for (const g1 of groups) {
+    svgEl.append(svg("g", { class: `forest${g1.f.name ? "" : " unknown"}` },
+      svg("rect", { x: g1.x, y: g1.y, width: g1.w, height: g1.h, rx: 14 }),
+      svg("text", { x: g1.x + 14, y: g1.y + 24 }, g1.f.name ? `Forêt ${g1.f.name}` : "Forêt non déterminée")));
+  }
+  tm.trusts.forEach((t, i) => {
+    const a = pos.get(t.source), b = pos.get(t.target);
+    if (!a || !b) return;
+    const sevKey = t.severity || "none";
+    const inSim = reach && t.access.some((x) => reach.has(x.from) && reach.get(x.to)?.via === t);
+    const ax = a.x + boxW, ay = a.y + boxH / 2, bx = b.x, by = b.y + boxH / 2;
+    const internal = t.kind === "within_forest";
+    const d = internal ? `M${a.x},${a.y + boxH / 2} C${a.x - 34},${a.y + boxH / 2} ${b.x - 34},${b.y + boxH / 2} ${b.x},${b.y + boxH / 2}`
+      : `M${ax},${ay} C${(ax + bx) / 2},${ay} ${(ax + bx) / 2},${by} ${bx},${by}`;
+    // flèches dans le sens de l'accès (le domaine approuvé accède au domaine qui approuve)
+    const toTarget = t.access.some((x) => x.to === t.target), toSource = t.access.some((x) => x.to === t.source);
+    const line = svg("path", { class: `trust-line sev-${sevKey}${internal ? " internal" : ""}${t.transitive === false ? " nontransitive" : ""}${reach ? (inSim ? " sim-on" : " sim-off") : ""}`, d,
+      "marker-end": toTarget ? `url(#tarrow-${sevKey})` : null, "marker-start": toSource ? `url(#tarrow-${sevKey})` : null, tabindex: "0" });
+    line.append(svg("title", {}, `${t.kind_label} — ${t.direction}`));
+    line.addEventListener("click", () => openTrust(t));
+    line.addEventListener("keydown", (e) => { if (e.key === "Enter") openTrust(t); });
+    svgEl.append(line);
+    if (!internal) {
+      const lx = (ax + bx) / 2, ly = (ay + by) / 2 - 8;
+      svgEl.append(svg("text", { class: `trust-label sev-${sevKey}`, x: lx, y: ly, "text-anchor": "middle" }, t.kind_label.split(" (")[0] + (t.risks.length ? ` · ${t.risks.length} risque${t.risks.length > 1 ? "s" : ""}` : "")));
+    }
+  });
+  for (const [name, p] of pos) {
+    const r = reach?.get(name);
+    const g1 = svg("g", { class: `dom${name === tm.current ? " current" : ""}${reach ? (r ? (r.hops === 0 ? " sim-origin" : r.elevated ? " sim-elevated" : " sim-reached") : " sim-off") : ""}`, transform: `translate(${p.x},${p.y})`, tabindex: "0" },
+      svg("rect", { width: boxW, height: boxH, rx: 8 }),
+      svg("text", { x: 14, y: 20, class: "dom-name" }, name.length > 26 ? `${name.slice(0, 25)}…` : name),
+      svg("text", { x: 14, y: 36, class: "dom-sub" }, name === tm.current ? "Domaine audité" : r && r.hops > 0 ? (r.elevated ? "Atteint, élévation possible" : `Atteint en ${r.hops} étape${r.hops > 1 ? "s" : ""}`) : ""));
+    g1.addEventListener("click", () => { topoState.simFrom = name; softRender(); });
+    svgEl.append(g1);
+  }
+
+  // Simulation
+  const sel = el("select", { "aria-label": "Domaine compromis" }, el("option", { value: "" }, "— choisir un domaine —"), tm.domains.map((d) => el("option", { value: d.name, selected: topoState.simFrom === d.name }, d.name)));
+  sel.addEventListener("change", () => { topoState.simFrom = sel.value; softRender(); });
+  let simText = el("p", { class: "muted" }, "Choisissez un domaine (ou cliquez dessus) pour voir jusqu'où un attaquant qui y contrôle un compte pourrait s'authentifier via les approbations.");
+  if (reach) {
+    const hops = [...reach.entries()].filter(([, r]) => r.hops > 0).sort((a, b) => a[1].hops - b[1].hops);
+    simText = hops.length ? el("ol", { class: "plain sim-steps" }, hops.map(([d, r]) => el("li", {},
+      el("strong", {}, d), ` : accessible depuis ${r.from} (${r.via.kind_label.toLowerCase()}${r.via.transitive === false ? ", non transitive" : r.via.transitive ? ", transitive" : ""}).`,
+      r.via.sid_filtering === false ? el("div", { class: "note small" }, `Filtrage SID désactivé : un administrateur de ${r.from} pourrait obtenir les droits d'un administrateur de ${d} (historique SID).`) : null,
+      r.via.risks.filter((x) => x.label !== "Filtrage SID désactivé").map((x) => el("div", { class: "small muted" }, `Risque : ${x.label}`)))))
+      : el("p", {}, `Aucune approbation ne permet aux comptes de ${topoState.simFrom} d'accéder à un autre domaine connu.`);
+  }
+  const sim = section("Simuler une compromission", "Quels domaines un compte compromis peut-il atteindre ?",
+    el("div", { class: "section-body" }, el("div", { class: "inline-fields" }, sel, topoState.simFrom ? el("button", { class: "btn btn-link", onclick: () => { topoState.simFrom = ""; softRender(); } }, "Effacer") : null),
+      simText,
+      el("p", { class: "muted small" }, "Approximation à partir des approbations vues depuis le domaine audité : les relations entre domaines tiers ne sont pas connues. L'accès ne donne pas de droits par lui-même ; il ouvre l'authentification, et les droits accordés aux comptes étrangers font le reste.")));
+
+  const rows = tm.trusts.map((t) => el("tr", { class: "clickable", tabindex: "0", onclick: () => openTrust(t), onkeydown: (e) => { if (e.key === "Enter") openTrust(t); } },
+    el("td", {}, el("strong", {}, t.target)), el("td", {}, t.kind_label),
+    el("td", {}, { outbound: "Sortante", inbound: "Entrante", bidirectional: "Bidirectionnelle" }[t.direction] || t.direction),
+    el("td", { class: "hide-sm" }, t.transitive === null ? "—" : t.transitive ? "Oui" : "Non"),
+    el("td", {}, t.risks.length ? t.risks.map((r) => el("div", {}, sev(r.severity), " ", r.label)) : el("span", { class: "status status-succeeded" }, "Aucun"))));
+  return [
+    el("div", { class: "topo-layout" },
+      el("section", { class: "section topo-main" }, el("div", { class: "trust-legend small" },
+        el("span", {}, el("i", { class: "tl sev-high" }), "Risque élevé"), el("span", {}, el("i", { class: "tl sev-medium" }), "Risque moyen"),
+        el("span", {}, el("i", { class: "tl sev-none" }), "Sans risque relevé"), el("span", {}, el("i", { class: "tl dashed" }), "Non transitive"),
+        el("span", { class: "muted" }, "Flèche = sens de l'accès (le domaine approuvé accède au domaine qui l'approuve)")), el("div", { class: "trust-canvas" }, svgEl)),
+      sim),
+    section("Approbations du domaine " + tm.current, plural(tm.trusts.length, "approbation", "approbations"), el("div", { class: "table-wrap" }, el("table", { class: "data" },
+      el("thead", {}, el("tr", {}, el("th", {}, "Domaine"), el("th", {}, "Type"), el("th", {}, "Sens"), el("th", { class: "hide-sm" }, "Transitive"), el("th", {}, "Risques"))),
+      el("tbody", {}, rows)))),
+  ];
+}
+function openTrust(t) {
+  const dir = { outbound: `${t.source} approuve ${t.target} : les comptes de ${t.target} peuvent s'authentifier auprès des ressources de ${t.source}.`,
+    inbound: `${t.target} approuve ${t.source} : les comptes de ${t.source} peuvent s'authentifier auprès des ressources de ${t.target}.`,
+    bidirectional: `Approbation dans les deux sens : les comptes de chaque domaine peuvent s'authentifier auprès de l'autre.` }[t.direction] || "";
+  const fixes = { "Filtrage SID désactivé": "Réactiver le filtrage SID (quarantaine) sur l'approbation, après avoir vérifié qu'aucune migration en cours ne repose sur l'historique SID.",
+    "Délégation de TGT autorisée": "Désactiver la délégation de TGT à travers l'approbation (attribut de l'approbation), sauf besoin documenté.",
+    "Chiffrement RC4 uniquement": "Activer AES sur l'approbation (types de chiffrement pris en charge) des deux côtés.",
+    "Domaine NT4 (protocole obsolète)": "Retirer l'approbation vers le domaine NT4 ou migrer ce domaine.",
+    "Secret d'approbation non renouvelé depuis plus de 45 jours": "Vérifier la réplication et le renouvellement automatique du secret (tous les 30 jours normalement)." };
+  openPanel(t.kind_label, `${t.source} ↔ ${t.target}`, el("div", {},
+    el("p", {}, dir),
+    el("div", { class: "kv" }, el("span", {}, `Transitive : ${t.transitive === null ? "non collecté" : t.transitive ? "oui" : "non"}`),
+      t.sid_filtering !== null ? el("span", {}, `Filtrage SID : ${t.sid_filtering ? "actif" : "désactivé"}`) : el("span", {}, "Filtrage SID : sans objet (intra-forêt)")),
+    t.kind === "within_forest" ? el("p", { class: "note small" }, "Au sein d'une forêt, la frontière de sécurité est la forêt, pas le domaine : un administrateur d'un domaine enfant peut prendre le contrôle de toute la forêt.") : null,
+    t.risks.length ? [el("h3", {}, "Risques et corrections"), el("ul", { class: "plain" }, t.risks.map((r) => el("li", {}, sev(r.severity), " ", el("strong", {}, r.label), el("div", { class: "small muted" }, fixes[r.label] || ""))))]
+      : el("p", {}, "Aucun risque relevé sur cette approbation.")));
+}
+
 // ---------------------------------------------------------------------------- vue : IA locale (admin)
 const DOC_TEMPLATE = `# Titre du document
 
@@ -1656,26 +2031,30 @@ async function openDoc(name) {
 // ---------------------------------------------------------------------------- routeur
 const RENDER = { dashboard: viewDashboard, maturity: viewMaturity, compare: viewCompare, overview: viewOverview,
   findings: viewFindings, pki: viewPki, entra: viewEntra, mitre: viewMitre, report: viewReport, scans: viewScans, rules: viewRules,
-  targets: viewTargets, jobs: viewJobs, users: viewUsers, audit: viewAudit, help: viewHelp, ai: viewAi };
+  targets: viewTargets, jobs: viewJobs, users: viewUsers, audit: viewAudit, help: viewHelp, ai: viewAi, topology: viewTopology };
 
 function currentView() {
   const path = (location.hash.slice(2) || "dashboard").split("?")[0];
   return RENDER[path] && (!VIEWS[path].admin || state.user?.role === "admin") ? path : "dashboard";
 }
 let rendering = false;
+let routeSeq = 0; // seule la navigation la plus récente peut afficher son contenu
 async function softRender() {
   // Réaffiche la vue courante sans la remettre en haut de page (mises à jour en direct)
   if (rendering || !state.user || $("drawer").classList.contains("open")) return;
   rendering = true;
+  const seq = routeSeq, view = currentView();
   try {
     const [, query] = (location.hash.slice(2) || "").split("?");
-    const content = await RENDER[currentView()](new URLSearchParams(query || ""));
+    const content = await RENDER[view](new URLSearchParams(query || ""));
+    if (seq !== routeSeq || view !== currentView()) return; // l'utilisateur a changé de page entre-temps
     $("view").replaceChildren(...[content].flat().filter(Boolean));
   } catch { /* la prochaine actualisation réessaiera */ } finally { rendering = false; }
 }
 
 async function route() {
   if (!state.user) return;
+  const seq = ++routeSeq;
   const [, query] = (location.hash.slice(2) || "dashboard").split("?");
   const name = currentView();
   const meta = VIEWS[name];
@@ -1691,8 +2070,10 @@ async function route() {
   view.replaceChildren(el("p", { class: "muted" }, "Chargement…"));
   try {
     const content = await RENDER[name](new URLSearchParams(query || ""));
+    if (seq !== routeSeq) return; // navigation plus récente en cours
     view.replaceChildren(...[content].flat().filter(Boolean));
   } catch (e) {
+    if (seq !== routeSeq) return;
     view.replaceChildren(el("section", { class: "section" }, emptyState("Impossible d'afficher cette page", e.message)));
   }
   view.focus({ preventScroll: true });

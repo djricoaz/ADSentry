@@ -109,6 +109,8 @@ class Trust(BaseModel):
     tgt_delegation: bool = False
     aes_enabled: bool | None = None
     last_change: datetime | None = None
+    # forest | external | realm (Kerberos MIT) | downlevel (NT4) | within_forest ; None = non collecté
+    kind: str | None = None
 
 
 class AclEdge(BaseModel):
@@ -196,6 +198,7 @@ class DomainInfo(BaseModel):
     name: str
     sid: str
     netbios: str | None = None
+    forest: str | None = None  # nom DNS de la racine de forêt (None = non collecté)
     functional_level: int = 7  # 7 = 2016, 10 = 2025
     forest_functional_level: int | None = None
     machine_account_quota: int = 10
@@ -398,6 +401,8 @@ class Snapshot(BaseModel):
     computers: list[Computer] = []
     groups: list[Group] = []
     trusts: list[Trust] = []
+    # Approbations internes à la forêt (parent-enfant, racine d'arbre) : topologie uniquement, aucune règle
+    intra_forest_trusts: list[Trust] = []
     acl_edges: list[AclEdge] = []
     gpos: list[Gpo] | None = None  # None = SYSVOL non lu
     dns_zones: list[DnsZone] | None = None

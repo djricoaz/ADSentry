@@ -6,6 +6,7 @@
   "name": "corp.local",
   "netbios": "CORP",
   "sid": "S-1-5-21-1000-2000-3000",
+  "forest": "corp.local",
   "functional_level": 10,
   "forest_functional_level": 10,
   "machine_account_quota": 0,
@@ -209,6 +210,15 @@
    "target": "partner.local",
    "sid": "S-1-5-21-7777-7777-7777",
    "aes_enabled": true,
+   "last_change": "2026-10-30T08:00:00Z",
+   "kind": "forest"
+  }
+ ],
+ "intra_forest_trusts": [
+  {
+   "target": "paris.corp.local",
+   "direction": "bidirectional",
+   "kind": "within_forest",
    "last_change": "2026-10-30T08:00:00Z"
   }
  ],

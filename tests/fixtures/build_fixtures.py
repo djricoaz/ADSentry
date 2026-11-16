@@ -369,6 +369,7 @@ def vulnerable() -> dict:
             "name": "corp.local",
             "netbios": "CORP",
             "sid": D,
+            "forest": "corp.local",
             "functional_level": 7,
             "forest_functional_level": 6,
             "machine_account_quota": 10,
@@ -401,8 +402,32 @@ def vulnerable() -> dict:
                 "tgt_delegation": True,
                 "aes_enabled": False,
                 "last_change": "2026-01-01T00:00:00Z",
+                "kind": "external",
             },
-            {"target": "LEGACYNT4", "trust_type": 1, "direction": "outbound", "last_change": RECENT},
+            {
+                "target": "LEGACYNT4",
+                "trust_type": 1,
+                "direction": "outbound",
+                "last_change": RECENT,
+                "kind": "downlevel",
+            },
+            {
+                "target": "filiale.example",
+                "sid": "S-1-5-21-500000001-500000002-500000003",
+                "direction": "bidirectional",
+                "kind": "forest",
+                "aes_enabled": True,
+                "last_change": RECENT,
+            },
+        ],
+        "intra_forest_trusts": [
+            {
+                "target": "paris.corp.local",
+                "direction": "bidirectional",
+                "kind": "within_forest",
+                "last_change": RECENT,
+            },
+            {"target": "lyon.corp.local", "direction": "bidirectional", "kind": "within_forest", "last_change": RECENT},
         ],
         "acl_edges": [
             edge(f"{D}-1106", "corp.local", "DS-Replication-Get-Changes-All", "domain"),
@@ -718,6 +743,7 @@ def hardened() -> dict:
             "name": "corp.local",
             "netbios": "CORP",
             "sid": D,
+            "forest": "corp.local",
             "functional_level": 10,
             "forest_functional_level": 10,
             "machine_account_quota": 0,
@@ -744,7 +770,12 @@ def hardened() -> dict:
             },
             {"sid": f"{D}-525", "name": "Protected Users", "members": [a["sid"] for a in admins]},
         ],
-        "trusts": [{"target": "partner.local", "sid": TRUSTED, "aes_enabled": True, "last_change": RECENT}],
+        "trusts": [
+            {"target": "partner.local", "sid": TRUSTED, "aes_enabled": True, "last_change": RECENT, "kind": "forest"}
+        ],
+        "intra_forest_trusts": [
+            {"target": "paris.corp.local", "direction": "bidirectional", "kind": "within_forest", "last_change": RECENT}
+        ],
         "acl_edges": [edge(DC_GRP, "corp.local", "DS-Replication-Get-Changes-All", "domain")],
         "gpos": gpos,
         "dns_zones": [{"name": "corp.local", "critical": True}, {"name": "_msdcs.corp.local", "critical": True}],

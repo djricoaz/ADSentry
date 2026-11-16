@@ -58,7 +58,7 @@ def summarize(scan_id: str, r: ScanResult) -> dict:
 def load_all(data_dir: Path) -> list[tuple[str, ScanResult]]:
     out = []
     for p in data_dir.glob("*.json"):
-        if p.name.endswith(".ai.json"):
+        if p.name.endswith((".ai.json", ".graph.json")):
             continue
         try:
             out.append((p.stem, ScanResult.model_validate_json(p.read_text(encoding="utf-8"))))

@@ -6,6 +6,7 @@
   "name": "corp.local",
   "netbios": "CORP",
   "sid": "S-1-5-21-1000-2000-3000",
+  "forest": "corp.local",
   "functional_level": 7,
   "forest_functional_level": 6,
   "machine_account_quota": 10,
@@ -1161,12 +1162,36 @@
    "sid_filtering": false,
    "tgt_delegation": true,
    "aes_enabled": false,
-   "last_change": "2026-01-01T00:00:00Z"
+   "last_change": "2026-01-01T00:00:00Z",
+   "kind": "external"
   },
   {
    "target": "LEGACYNT4",
    "trust_type": 1,
    "direction": "outbound",
+   "last_change": "2026-10-30T08:00:00Z",
+   "kind": "downlevel"
+  },
+  {
+   "target": "filiale.example",
+   "sid": "S-1-5-21-500000001-500000002-500000003",
+   "direction": "bidirectional",
+   "kind": "forest",
+   "aes_enabled": true,
+   "last_change": "2026-10-30T08:00:00Z"
+  }
+ ],
+ "intra_forest_trusts": [
+  {
+   "target": "paris.corp.local",
+   "direction": "bidirectional",
+   "kind": "within_forest",
+   "last_change": "2026-10-30T08:00:00Z"
+  },
+  {
+   "target": "lyon.corp.local",
+   "direction": "bidirectional",
+   "kind": "within_forest",
    "last_change": "2026-10-30T08:00:00Z"
   }
  ],
